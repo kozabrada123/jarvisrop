@@ -38,40 +38,19 @@ impl Instruction {
                     operands[i] = Some(Operand::Immediate(ImmediateOp::U8(val as u8)));
                 }
 
-                OpKind::Immediate16 => {
+                OpKind::Immediate16 | OpKind::Immediate8to16 => {
                     let val = ins.try_immediate(i as u32).unwrap();
                     operands[i] = Some(Operand::Immediate(ImmediateOp::U16(val as u16)));
                 }
 
-                OpKind::Immediate8to16 => {
-                    let val = ins.try_immediate(i as u32).unwrap();
-                    operands[i] = Some(Operand::Immediate(ImmediateOp::I16(i16::from_be_bytes(
-                        (val as u16).to_be_bytes(),
-                    ))));
-                }
-
-                OpKind::Immediate32 => {
+                OpKind::Immediate32 | OpKind::Immediate8to32 => {
                     let val = ins.try_immediate(i as u32).unwrap();
                     operands[i] = Some(Operand::Immediate(ImmediateOp::U32(val as u32)));
                 }
 
-                OpKind::Immediate8to32 => {
-                    let val = ins.try_immediate(i as u32).unwrap();
-                    operands[i] = Some(Operand::Immediate(ImmediateOp::I32(i32::from_be_bytes(
-                        (val as u32).to_be_bytes(),
-                    ))));
-                }
-
-                OpKind::Immediate64 => {
+                OpKind::Immediate64 | OpKind::Immediate8to64 | OpKind::Immediate32to64 => {
                     let val = ins.try_immediate(i as u32).unwrap();
                     operands[i] = Some(Operand::Immediate(ImmediateOp::U64(val as u64)));
-                }
-
-                OpKind::Immediate8to64 | OpKind::Immediate32to64 => {
-                    let val = ins.try_immediate(i as u32).unwrap();
-                    operands[i] = Some(Operand::Immediate(ImmediateOp::I64(i64::from_be_bytes(
-                        (val as u64).to_be_bytes(),
-                    ))));
                 }
 
                 OpKind::Memory => {
@@ -121,13 +100,9 @@ pub enum Operand {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ImmediateOp {
     U8(u8),
-    I8(i8),
     U16(u16),
-    I16(i16),
     U32(u32),
-    I32(i32),
     U64(u64),
-    I64(i64),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

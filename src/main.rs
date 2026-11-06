@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use std::{collections::HashSet, path::PathBuf};
 
 use crate::instruction::{
-    ImmediateOp::{I8, I16, I32, I64, U8, U16, U32, U64}, Instruction,
+    ImmediateOp::{U8, U16, U32, U64}, Instruction,
 };
 
 pub mod constraint;
@@ -74,63 +74,4 @@ fn main() {
     let gadget_count = gadgets.len();
 
     println!("Found {} gadgets..", gadget_count,);
-
-    let mut opkinds = HashSet::new();
-
-    for g in gadgets {
-        for i in g.0.instructions().iter().enumerate() {
-            for (idx, op_kind) in i.1.op_kinds().enumerate() {
-                opkinds.insert(op_kind);
-
-                let operand = g.1.0[i.0].operands[idx].unwrap();
-
-                match operand {
-                    instruction::Operand::Immediate(immediate) => match immediate {
-                        U8(v) => {
-                            if v > u8::MAX/2 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        I8(v) => {
-                            if v < 0 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        U16(v) => {
-                            if v > u16::MAX/2 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        I16(v) => {
-                            if v < 0 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        U32(v) => {
-                            if v > u32::MAX/2 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        I32(v) => {
-                            if v < 0 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        U64(v) => {
-                            if v > u64::MAX/2 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        I64(v) => {
-                            if v < 0 {
-                                println!("{:?} - {}", immediate, i.1);
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-        }
-    }
 }
