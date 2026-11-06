@@ -1,0 +1,11 @@
+[package]
+name = "ropchain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = "4.6.7"
+iced-x86 = "1.22.0"
+ropr = "0.2.26"
+rayon = "1.12.0" # <-- really cool paralelism!
+rustc-hash = "2.1.3"
