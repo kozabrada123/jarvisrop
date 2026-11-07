@@ -1,6 +1,6 @@
 use clap::Parser;
 use iced_x86::{
-    OpKind, Register::{R12, R14, R15, RAX, RCX, RDI, RSI},
+    OpKind, Register::*,
 };
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
@@ -13,17 +13,12 @@ use std::{
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual,
-        UnaryOperator::{self, IsControlled},
-        binary, unary,
-    },
-    instruction::{
+        BinaryOperator::IsEqual, UnaryOperator::{self, IsControlled}, a_part_of_b, binary, unary,
+    }, instruction::{
         ImmediateOp::{U8, U16, U32, U64},
         Instruction,
         Operand::{self, Register},
-    },
-    search::{Path, Searcher},
-    state::State,
+    }, search::{Path, Searcher}, state::State,
 };
 
 pub mod constraint;
@@ -39,7 +34,8 @@ struct Args {
     binary: PathBuf,
 }
 
-pub const WEIRD_OP_KINDS: [OpKind; 9] = [
+pub const WEIRD_OP_KINDS: [OpKind; 10] = [
+    OpKind::Memory, // Temporary optimization until we support it!
     OpKind::MemoryESDI,
     OpKind::MemorySegSI,
     OpKind::MemorySegDI,
@@ -56,7 +52,7 @@ fn main() {
 
     let b = opts.binary;
     let b = Binary::new(b).unwrap();
-    let sections = b.sections(None).unwrap();
+    let sections = b.sections(Option::None).unwrap();
 
     let gadget_to_addr = sections
         .iter()
@@ -96,9 +92,9 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
-            unary(Register(RDI), IsControlled),
+            unary(Register(AL), IsControlled),
             unary(Register(RSI), IsControlled),
-            unary(Register(RAX), IsControlled),
+            unary(Register(RDI), IsControlled),
         ],
         initial_state: State::initial(),
         found_solve: (0, Path::null()),

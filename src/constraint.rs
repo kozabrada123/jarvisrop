@@ -161,22 +161,33 @@ impl Constraint {
         }
 
         match self {
-            Self::Unary(u) => match u.operator {
+            Self::Unary(s) => match s.operator {
                 // Is controlled can be written as equals something else that is controlled
                 UnaryOperator::IsControlled => {
                     for effect in &other.effects {
                         match effect {
-                            Self::Binary(b) => match b.operator {
+                            Self::Binary(o) => match o.operator {
                                 BinaryOperator::IsEqual => {
                                     // FIXME: op_a_part_of_b can cause bugs
                                     // TODO: memory goofyness
-                                    if b.wanted_result.is_register() && op_a_part_of_b(u.target, b.target) {
-                                        other.requirements.push(unary(b.wanted_result, u.operator));
+                                    if o.wanted_result.is_register()
+                                        && op_a_part_of_b(s.target, o.target)
+                                    {
+                                        other.requirements.push(unary(
+                                            o.wanted_result,
+                                            UnaryOperator::IsControlled,
+                                        ));
                                         return true;
                                     }
                                 }
                                 _ => {}
                             },
+                            Self::Unary(o) => {
+                                // Same thing we're doing, just with a larger sized register
+                                if s.operator == o.operator {
+                                    return op_a_part_of_b(s.target, o.target);
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -185,7 +196,7 @@ impl Constraint {
                 }
                 _ => false,
             },
-            Self::Binary(b) => match b.operator {
+            Self::Binary(s) => match s.operator {
                 // TODO: rewrite is not equal to is equal / is lower / is greater than something
                 // else
                 BinaryOperator::IsEqual => {
@@ -194,11 +205,13 @@ impl Constraint {
                             Self::Binary(o) => match o.operator {
                                 BinaryOperator::IsEqual => {
                                     // FIXME: can cause bugs
-                                    if op_a_part_of_b(b.target, o.target) {
+                                    if o.wanted_result.is_register()
+                                        && op_a_part_of_b(s.target, o.target)
+                                    {
                                         other.requirements.push(binary(
                                             o.wanted_result,
-                                            b.operator,
-                                            b.wanted_result,
+                                            BinaryOperator::IsEqual,
+                                            s.wanted_result,
                                         ));
                                         return true;
                                     }
