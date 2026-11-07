@@ -3,9 +3,7 @@ use std::sync::Arc;
 use crate::{
     constraint::{
         Token, dedup_constraints, dedup_results, total_dedup_constraints, total_dedup_results,
-    },
-    hash_util::compute_hash,
-    instruction::Instruction,
+    }, hash_util::compute_hash, instruction::Instruction, state::State,
 };
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -18,25 +16,26 @@ pub struct Gadget {
 }
 
 impl Token for Gadget {
-    fn find_results(&self) -> Vec<crate::constraint::TokenResult> {
+    // FIXME: is it really that different based on state?
+    fn find_results(&self, _state: &mut State) -> Vec<crate::constraint::TokenResult> {
         self.results.clone()
     }
 
-    fn find_needed_constraints(&self) -> Vec<crate::constraint::Constraint> {
+    fn find_needed_constraints(&self, _state: &mut State) -> Vec<crate::constraint::Constraint> {
         self.constraints.clone()
     }
 }
 
 impl Gadget {
-    pub fn from_inner(inner: Arc<ropr::gadgets::Gadget>) -> Self {
+    pub fn from_inner(inner: Arc<ropr::gadgets::Gadget>, state: &mut State) -> Self {
         let instructions = inner
             .instructions()
             .iter()
             .map(|i| Instruction::from_iced(*i))
             .collect::<Vec<_>>();
 
-        let results = Self::calculate_results(&instructions);
-        let constraints = Self::calculate_needed_constraints(&instructions);
+        let results = Self::calculate_results(&instructions, state);
+        let constraints = Self::calculate_needed_constraints(&instructions, state);
 
         Self {
             inner,
@@ -46,21 +45,21 @@ impl Gadget {
         }
     }
 
-    fn calculate_needed_constraints(is: &Vec<Instruction>) -> Vec<crate::constraint::Constraint> {
+    fn calculate_needed_constraints(is: &Vec<Instruction>, state: &mut State) -> Vec<crate::constraint::Constraint> {
         let mut cs = Vec::new();
 
         for ins in is {
-            cs.append(&mut total_dedup_constraints(ins.find_needed_constraints()));
+            cs.append(&mut total_dedup_constraints(ins.find_needed_constraints(state), state));
         }
 
         return cs;
     }
 
-    fn calculate_results(is: &Vec<Instruction>) -> Vec<crate::constraint::TokenResult> {
+    fn calculate_results(is: &Vec<Instruction>, state: &mut State) -> Vec<crate::constraint::TokenResult> {
         let mut resus = Vec::new();
 
         for ins in is {
-            resus.append(&mut total_dedup_results(ins.find_results()));
+            resus.append(&mut total_dedup_results(ins.find_results(state)));
         }
 
         return resus;

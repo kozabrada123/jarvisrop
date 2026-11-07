@@ -1,21 +1,21 @@
 use clap::Parser;
 use iced_x86::{
-    OpKind,
-    Register::{RAX, RDI},
+    OpKind, Register::{R14, RAX, RDI},
 };
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashMap;
-use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use crate::{
-    constraint::binary,
-    instruction::{
+    constraint::{binary, unary}, instruction::{
         ImmediateOp::{U8, U16, U32, U64},
         Instruction, Operand,
-    },
-    search::{Path, Searcher},
-    state::State,
+    }, search::{Path, Searcher}, state::State,
 };
 
 pub mod constraint;
@@ -66,7 +66,7 @@ fn main() {
                 })
                 .map(|gadget| {
                     (
-                        crate::gadget::Gadget::from_inner(Arc::new(gadget.0)),
+                        crate::gadget::Gadget::from_inner(Arc::new(gadget.0), &mut State::initial()),
                         gadget.1,
                     )
                 })
@@ -84,20 +84,29 @@ fn main() {
 
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().map(|(id, gadget)| gadget).collect(),
-        wanted: binary(
-            Operand::Register(RDI),
-            constraint::BinaryOperator::IsEqual,
-            Operand::Register(RAX),
+        wanted: unary(
+            Operand::Register(R14),
+            constraint::UnaryOperator::IsControlled,
         ),
         initial_state: State::initial(),
         found_solve: (0, Path::null()),
 
-        found_paths: vec![]
+        found_paths: vec![],
     };
 
-    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
+    println!(
+        "{} - {}",
+        searcher.found_paths.len(),
+        searcher.found_paths.last().unwrap_or(&HashMap::new()).len()
+    );
     searcher.tick();
-    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
-    searcher.tick();
-    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
+    println!(
+        "{} - {}",
+        searcher.found_paths.len(),
+        searcher.found_paths.last().unwrap_or(&HashMap::new()).len()
+    );
+
+    for path in searcher.found_paths.last().unwrap() {
+        println!("{:?}", path.1.ending_state);
+    }
 }

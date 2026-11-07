@@ -3,19 +3,22 @@ use std::collections::HashSet;
 use iced_x86::Register;
 
 use crate::{
-    constraint::Constraint::Unary, hash_util::compute_hash, instruction::{Instruction, Operand},
+    constraint::Constraint::Unary,
+    hash_util::compute_hash,
+    instruction::{Instruction, Operand},
+    state::State,
 };
 
 pub trait Token {
     /// Find the constraints the token needs to execute
-    fn find_needed_constraints(&self) -> Vec<Constraint>;
+    fn find_needed_constraints(&self, state: &mut State) -> Vec<Constraint>;
 
     /// Find the results that this token has
-    fn find_results(&self) -> Vec<TokenResult>;
+    fn find_results(&self, state: &mut State) -> Vec<TokenResult>;
 }
 
 impl Token for Instruction {
-    fn find_needed_constraints(&self) -> Vec<Constraint> {
+    fn find_needed_constraints(&self, state: &mut State) -> Vec<Constraint> {
         match self.inner.mnemonic() {
             iced_x86::Mnemonic::Mov => {
                 let dst = self.operands[0].unwrap();
@@ -47,7 +50,7 @@ impl Token for Instruction {
         }
     }
 
-    fn find_results(&self) -> Vec<TokenResult> {
+    fn find_results(&self, state: &mut State) -> Vec<TokenResult> {
         match self.inner.mnemonic() {
             iced_x86::Mnemonic::Mov => {
                 let dst = self.operands[0].unwrap();
@@ -95,11 +98,74 @@ impl Constraint {
     /// Convert self into a list of constraints self depends on
     ///
     /// self.flatten => self
-    pub fn flatten(self) -> Vec<Constraint> {
+    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
         match self {
             Constraint::Elementary(_e) => vec![self],
-            Constraint::Unary(u) => u.flatten(),
-            Constraint::Binary(b) => b.flatten(),
+            Constraint::Unary(u) => u.flatten(state),
+            Constraint::Binary(b) => b.flatten(state),
+        }
+    }
+
+    /// Returns true if other is a "transposition" of self
+    ///
+    /// For example, RAX is controlled can be rewritten as RAX = RDI where RDI is controlled
+    pub fn can_be_transposed_as(self, other: &mut TokenResult) -> bool {
+
+        // Word for word the same
+        if other.effects.contains(&self) {
+            return true;
+        }
+
+        match self {
+            Self::Unary(u) => match u.operator {
+                // Is controlled can be written as equals something else that is controlled
+                UnaryOperator::IsControlled => {
+                    for effect in &other.effects {
+                        match effect {
+                            Self::Binary(b) => match b.operator {
+                                BinaryOperator::IsEqual => {
+                                    if b.target == u.target {
+                                        other.requirements.push(unary(b.wanted_result, u.operator));
+                                        return true;
+                                    }
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    false
+                }
+                _ => false,
+            },
+            Self::Binary(b) => match b.operator {
+                // TODO: rewrite is not equal to is equal / is lower / is greater than something
+                // else
+                BinaryOperator::IsEqual => {
+                    for effect in &other.effects {
+                        match effect {
+                            Self::Binary(o) => match o.operator {
+                                BinaryOperator::IsEqual => {
+                                    if b.target == o.target {
+                                        other.requirements.push(binary(o.wanted_result, b.operator, b.wanted_result));
+                                        return true;
+                                    }
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        }
+                    }
+
+                    false
+                }
+                _ => false,
+            },
+            Self::Elementary(ElementaryConstraint(always_value)) => {
+                return always_value;
+            }
+            _ => false,
         }
     }
 }
@@ -123,7 +189,7 @@ impl BinaryConstraint {
     /// Convert self into a list of constraints self depends on
     ///
     /// self.flatten => self
-    pub fn flatten(self) -> Vec<Constraint> {
+    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
         if self.target == self.wanted_result {
             if self.operator == BinaryOperator::IsEqual {
                 return vec![elementary(true)];
@@ -186,7 +252,7 @@ impl UnaryConstraint {
     /// Convert self into a list of constraints self depends on
     ///
     /// self.flatten => self
-    pub fn flatten(self) -> Vec<Constraint> {
+    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
         match self.target {
             Operand::Memory(_memory) => {
                 match self.operator {
@@ -274,7 +340,7 @@ pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Con
     })
 }
 
-pub fn dedup_constraints(c: Vec<Constraint>) -> Vec<Constraint> {
+pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
     let mut c = c;
     let mut dedup = Vec::new();
 
@@ -294,21 +360,21 @@ pub fn dedup_constraints(c: Vec<Constraint>) -> Vec<Constraint> {
             return vec![con];
         }
 
-        dedup.append(&mut con.flatten());
+        dedup.append(&mut con.flatten(state));
         i += 1;
     }
 
     return dedup;
 }
 
-pub fn total_dedup_constraints(c: Vec<Constraint>) -> Vec<Constraint> {
+pub fn total_dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
     let mut c = c;
     let mut p_hash = 0;
     let mut hash = compute_hash(&c);
 
     while p_hash != hash {
         p_hash = hash;
-        c = dedup_constraints(c);
+        c = dedup_constraints(c, state);
         hash = compute_hash(&c);
     }
 
@@ -350,4 +416,27 @@ pub fn total_dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
     }
 
     return c;
+}
+
+pub fn is_constraint_vec_elementary(p: &Vec<Constraint>) -> Option<bool> {
+    // Matter of definitions
+    if p.len() == 0 {
+        return Some(true);
+    }
+
+    if p.len() == 1
+        && let Some(Constraint::Elementary(ElementaryConstraint(b))) = p.last()
+    {
+        return Some(*b);
+    }
+
+    None
+}
+
+pub fn is_subset<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
+    a.iter().all(|c| b.contains(c))
+}
+
+pub fn is_equal<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
+    is_subset(a, b) && is_subset(b, a)
 }
