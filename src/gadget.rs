@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{fmt::{self, Write}, sync::Arc};
 
 use crate::{
     constraint::{
@@ -6,13 +6,27 @@ use crate::{
     }, hash_util::compute_hash, instruction::Instruction, state::State,
 };
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Gadget {
     pub inner: Arc<ropr::gadgets::Gadget>,
     pub instructions: Vec<Instruction>,
 
     pub results: Vec<crate::constraint::TokenResult>,
     pub constraints: Vec<crate::constraint::Constraint>,
+}
+
+impl fmt::Debug for Gadget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    
+       let mut instructions = String::new();
+
+       for ins in &self.instructions {
+        instructions.push_str(&ins.inner.to_string());
+        instructions.push_str("; ");
+       }
+
+       f.write_fmt(format_args!("G({} ({:?} | {:?}))", instructions, self.constraints, self.results)) 
+    }
 }
 
 impl Token for Gadget {

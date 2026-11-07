@@ -1,9 +1,17 @@
+use std::fmt;
+
 use iced_x86::{MemorySize, OpKind, Register};
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Instruction {
     pub inner: iced_x86::Instruction,
     pub operands: [Option<Operand>; 5],
+}
+
+impl fmt::Debug for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_fmt(format_args!("{}", self.inner))
+    }
 }
 
 impl Instruction {
@@ -32,7 +40,6 @@ impl Instruction {
                 }
 
                 // is this how it should work?
-
                 OpKind::Immediate8 | OpKind::Immediate8_2nd => {
                     let val = ins.try_immediate(i as u32).unwrap();
                     operands[i] = Some(Operand::Immediate(ImmediateOp::U8(val as u8)));
@@ -59,8 +66,12 @@ impl Instruction {
                     let segment = ins.memory_segment();
                     let base = ins.memory_base();
                     let displacement = match ins.memory_displ_size() {
-                        8 => I32OrI64::I64(i64::from_be_bytes(ins.memory_displacement64().to_be_bytes())),
-                        _ => I32OrI64::I32(i32::from_be_bytes(ins.memory_displacement32().to_be_bytes())),
+                        8 => I32OrI64::I64(i64::from_be_bytes(
+                            ins.memory_displacement64().to_be_bytes(),
+                        )),
+                        _ => I32OrI64::I32(i32::from_be_bytes(
+                            ins.memory_displacement32().to_be_bytes(),
+                        )),
                     };
                     let index = ins.memory_index();
                     let index_scale = ins.memory_index_scale();
@@ -90,11 +101,21 @@ impl Instruction {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Operand {
     Register(iced_x86::Register),
     Immediate(ImmediateOp),
     Memory(MemoryOp),
+}
+
+impl fmt::Debug for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Register(r) => f.write_fmt(format_args!("{:?}", r)),
+            Self::Immediate(i) => f.write_fmt(format_args!("{:?}", i)),
+            Self::Memory(m) => f.write_fmt(format_args!("{:?}", m)),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -107,12 +128,12 @@ pub enum ImmediateOp {
 
 impl ImmediateOp {
     pub fn to_u64(self) -> u64 {
-       match self {
+        match self {
             Self::U8(a) => a as u64,
             Self::U16(a) => a as u64,
             Self::U32(a) => a as u64,
-            Self::U64(a) => a as u64
-        } 
+            Self::U64(a) => a as u64,
+        }
     }
 }
 

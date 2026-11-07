@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 use iced_x86::Register;
 
@@ -81,17 +81,33 @@ impl Token for Instruction {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct TokenResult {
     pub requirements: Vec<Constraint>,
     pub effects: Vec<Constraint>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+impl fmt::Debug for TokenResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+       f.write_fmt(format_args!("R({:?} -> {:?})", self.requirements, self.effects)) 
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Constraint {
     Binary(BinaryConstraint),
     Unary(UnaryConstraint),
     Elementary(ElementaryConstraint),
+}
+
+impl fmt::Debug for Constraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unary(u) => f.write_fmt(format_args!("{:?}", u)),
+            Self::Binary(b) => f.write_fmt(format_args!("{:?}", b)),
+            Self::Elementary(e) => f.write_fmt(format_args!("{:?}", e)),
+        }
+    }
 }
 
 impl Constraint {
@@ -170,7 +186,7 @@ impl Constraint {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BinaryConstraint {
     pub target: Operand,
     pub operator: BinaryOperator,
@@ -183,6 +199,12 @@ pub enum BinaryOperator {
     IsNotEqual,
     IsGreater,
     IsLess,
+}
+
+impl fmt::Debug for BinaryConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+       f.write_fmt(format_args!("C({:?} {:?} {:?})", self.target, self.operator, self.wanted_result)) 
+    }
 }
 
 impl BinaryConstraint {
@@ -233,10 +255,16 @@ impl BinaryConstraint {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UnaryConstraint {
     pub target: Operand,
     pub operator: UnaryOperator,
+}
+
+impl fmt::Debug for UnaryConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+       f.write_fmt(format_args!("C({:?} {:?})", self.target, self.operator)) 
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -321,8 +349,18 @@ impl UnaryConstraint {
 
 /// ElementaryConstraint(true) is always true, such as 1 = 1
 /// ElementaryConstraint(false) is always false, such as 1 = 0
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElementaryConstraint(bool);
+
+impl fmt::Debug for ElementaryConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.0 {
+            f.write_str("C(Always)")
+        } else {
+            f.write_str("C(Impossible)")
+        }
+    }
+}
 
 pub fn elementary(b: bool) -> Constraint {
     Constraint::Elementary(ElementaryConstraint(b))

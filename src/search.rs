@@ -153,6 +153,8 @@ impl Path {
     pub fn with_applied_gadget(self, gadget: &Gadget) -> Self {
         let mut s = self;
         s.apply_gadget(gadget);
+        println!("Final: {:?}", s);
+        std::process::exit(0);
         s
     }
 
@@ -160,6 +162,8 @@ impl Path {
         let mut s = self;
         s.apply_gadget(gadget);
         s.previous_hash = previous;
+        println!("Final: {:?}", s);
+        std::process::exit(0);
         s
     }
 
