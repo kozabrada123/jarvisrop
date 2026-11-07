@@ -1,5 +1,5 @@
 use crate::{
-    constraint::{Constraint, Token, TokenResult, total_dedup_constraints},
+    constraint::{Constraint, Token, TokenResult, elementary, total_dedup_constraints},
     gadget::Gadget,
 };
 
@@ -12,8 +12,8 @@ pub struct State {
 impl State {
     pub fn initial() -> Self {
         Self {
-            fullfilled_effects: Vec::new(),
-            wanted_constraints: Vec::new(),
+            fullfilled_effects: Vec::with_capacity(15),
+            wanted_constraints: Vec::with_capacity(15),
         }
     }
 
@@ -25,5 +25,15 @@ impl State {
         }
 
         s
+    }
+
+    pub fn is_impossible(&self) -> bool {
+        for wanted in &self.wanted_constraints {
+            if wanted == &elementary(false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

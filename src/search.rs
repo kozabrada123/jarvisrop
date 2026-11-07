@@ -27,11 +27,13 @@ impl Searcher {
         let last = self.found_paths.last();
 
         if last.is_none() {
-
             let mut initial = Path::null();
             initial.ending_state = self.initial_state.clone().with_wanted(self.wanted.clone());
 
-            println!("Performing first layer with {} gadgets..", self.gadgets.len());
+            println!(
+                "Performing first layer with {} gadgets..",
+                self.gadgets.len()
+            );
 
             // first layer
             let found_paths = self
@@ -44,7 +46,14 @@ impl Searcher {
                 .map(|x| (compute_hash(&x), x))
                 .collect::<HashMap<_, _>>();
 
-            println!("bleh {}", found_paths.len());
+            found_paths.iter().for_each(|(id, p)| {
+                if let Some(true) = is_constraint_vec_elementary(&p.ending_state.wanted_constraints)
+                {
+                    self.found_solve = (*id, p.clone());
+                    return;
+                }
+            });
+
             self.found_paths.push(found_paths);
         } else {
             let last_u = last.unwrap();
@@ -53,6 +62,7 @@ impl Searcher {
 
             last_u
                 .iter()
+                .filter(|p| !p.1.ending_state.is_impossible())
                 .filter(|p| p.1.ending_state.wanted_constraints.len() < 3)
                 .for_each(|(id, path)| {
                     let found_developments = self
@@ -126,6 +136,7 @@ impl Path {
                     if wanted_constraint.can_be_transposed_as(res) {
                         wanted_constraints.remove(i);
                         insert = true;
+                        println!("new: {:?}", res.requirements);
                         continue;
                     }
 
@@ -153,8 +164,6 @@ impl Path {
     pub fn with_applied_gadget(self, gadget: &Gadget) -> Self {
         let mut s = self;
         s.apply_gadget(gadget);
-        println!("Final: {:?}", s);
-        std::process::exit(0);
         s
     }
 
@@ -162,8 +171,6 @@ impl Path {
         let mut s = self;
         s.apply_gadget(gadget);
         s.previous_hash = previous;
-        println!("Final: {:?}", s);
-        std::process::exit(0);
         s
     }
 
@@ -210,5 +217,9 @@ impl Path {
         }
 
         useful
+    }
+
+    pub fn is_impossible(&self) -> bool {
+        self.ending_state.is_impossible()
     }
 }

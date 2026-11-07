@@ -60,7 +60,7 @@ impl Gadget {
     }
 
     fn calculate_needed_constraints(is: &Vec<Instruction>, state: &mut State) -> Vec<crate::constraint::Constraint> {
-        let mut cs = Vec::new();
+        let mut cs = Vec::with_capacity(5 * is.len());
 
         for ins in is {
             cs.append(&mut total_dedup_constraints(ins.find_needed_constraints(state), state));
@@ -70,7 +70,7 @@ impl Gadget {
     }
 
     fn calculate_results(is: &Vec<Instruction>, state: &mut State) -> Vec<crate::constraint::TokenResult> {
-        let mut resus = Vec::new();
+        let mut resus = Vec::with_capacity(5 * is.len());
 
         for ins in is {
             resus.append(&mut total_dedup_results(ins.find_results(state)));

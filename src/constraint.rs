@@ -24,7 +24,7 @@ impl Token for Instruction {
                 let dst = self.operands[0].unwrap();
                 let src = self.operands[1].unwrap();
 
-                let mut c = Vec::new();
+                let mut c = Vec::with_capacity(3);
 
                 match dst {
                     Operand::Immediate(_) => {
@@ -44,6 +44,12 @@ impl Token for Instruction {
                 }
 
                 return c;
+            }
+            iced_x86::Mnemonic::Pop => {
+                vec![elementary(true)]
+            }
+            iced_x86::Mnemonic::Ret => {
+                vec![elementary(true)]
             }
             // TODO:
             _ => vec![elementary(false)],
@@ -89,7 +95,10 @@ pub struct TokenResult {
 
 impl fmt::Debug for TokenResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-       f.write_fmt(format_args!("R({:?} -> {:?})", self.requirements, self.effects)) 
+        f.write_fmt(format_args!(
+            "R({:?} -> {:?})",
+            self.requirements, self.effects
+        ))
     }
 }
 
@@ -126,7 +135,6 @@ impl Constraint {
     ///
     /// For example, RAX is controlled can be rewritten as RAX = RDI where RDI is controlled
     pub fn can_be_transposed_as(self, other: &mut TokenResult) -> bool {
-
         // Word for word the same
         if other.effects.contains(&self) {
             return true;
@@ -164,7 +172,13 @@ impl Constraint {
                             Self::Binary(o) => match o.operator {
                                 BinaryOperator::IsEqual => {
                                     if b.target == o.target {
-                                        other.requirements.push(binary(o.wanted_result, b.operator, b.wanted_result));
+                                        println!("Weewoo 1/2! {:?}", other.requirements);
+                                        other.requirements.push(binary(
+                                            o.wanted_result,
+                                            b.operator,
+                                            b.wanted_result,
+                                        ));
+                                        println!("Weewoo 2/2! {:?}", other.requirements);
                                         return true;
                                     }
                                 }
@@ -203,7 +217,10 @@ pub enum BinaryOperator {
 
 impl fmt::Debug for BinaryConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-       f.write_fmt(format_args!("C({:?} {:?} {:?})", self.target, self.operator, self.wanted_result)) 
+        f.write_fmt(format_args!(
+            "C({:?} {:?} {:?})",
+            self.target, self.operator, self.wanted_result
+        ))
     }
 }
 
@@ -263,7 +280,7 @@ pub struct UnaryConstraint {
 
 impl fmt::Debug for UnaryConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-       f.write_fmt(format_args!("C({:?} {:?})", self.target, self.operator)) 
+        f.write_fmt(format_args!("C({:?} {:?})", self.target, self.operator))
     }
 }
 
@@ -380,7 +397,7 @@ pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Con
 
 pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
     let mut c = c;
-    let mut dedup = Vec::new();
+    let mut dedup = Vec::with_capacity(c.len());
 
     let mut hs = HashSet::new();
 
@@ -407,21 +424,24 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
 
 pub fn total_dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
     let mut c = c;
-    let mut p_hash = 0;
-    let mut hash = compute_hash(&c);
+    let mut c_len = c.len();
+    let mut p_len = 0;
 
-    while p_hash != hash {
-        p_hash = hash;
+    while c_len != p_len {
+        p_len = c.len();
         c = dedup_constraints(c, state);
-        hash = compute_hash(&c);
+        c_len = c.len();
     }
+
+    // move from "just control -1 bro" to "yeah that's impossible dipshit"
+    c = dedup_constraints(c, state);
 
     return c;
 }
 
 pub fn dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
     let mut c = c;
-    let mut dedup = Vec::new();
+    let mut dedup = Vec::with_capacity(c.len());
 
     let mut hs = HashSet::new();
 
@@ -444,14 +464,17 @@ pub fn dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
 
 pub fn total_dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
     let mut c = c;
-    let mut p_hash = 0;
-    let mut hash = compute_hash(&c);
+    let mut c_len = c.len();
+    let mut p_len = 0;
 
-    while p_hash != hash {
-        p_hash = hash;
+    while c_len != p_len {
+        p_len = c.len();
         c = dedup_results(c);
-        hash = compute_hash(&c);
+        c_len = c.len();
     }
+
+    // move from "just control -1 bro" to "yeah that's impossible dipshit"
+    c = dedup_results(c);
 
     return c;
 }

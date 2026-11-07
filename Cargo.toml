@@ -9,3 +9,7 @@ iced-x86 = "1.22.0"
 ropr = "0.2.26"
 rayon = "1.12.0" # <-- really cool paralelism!
 rustc-hash = "2.1.3"
+
+[profile.release]
+debug = true
+
