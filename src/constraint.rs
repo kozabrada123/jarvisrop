@@ -509,10 +509,7 @@ pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Con
 }
 
 /// Assume that bigger indexes are constraints that are needed earlier
-pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
-    let mut c = c;
-    let mut dedup = Vec::with_capacity(c.len());
-
+pub fn dedup_constraints(c: &mut Vec<Constraint>) {
     let mut hs = HashSet::new();
 
     let mut i = 0;
@@ -526,7 +523,9 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
 
         // impossible, whole chain is impossible
         if con.eq(&elementary(false)) {
-            return vec![con];
+            c.clear();
+            c.push(con);
+            return;
         }
 
         // Check for later (earlier) ones that get invalidated by this one
@@ -542,35 +541,41 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
             j += 1;
         }
 
-        dedup.push(con);
         i += 1;
     }
-
-    return dedup;
 }
 
-pub fn total_dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
+pub fn total_dedup_constraints_for_state(state: &mut State) {
+    let mut c_len = state.wanted_constraints.len();
+    let mut p_len = 0;
+
+    while c_len != p_len {
+        p_len = state.wanted_constraints.len();
+        dedup_constraints(&mut state.wanted_constraints);
+        c_len = state.wanted_constraints.len();
+    }
+
+    // move from "just control -1 bro" to "yeah that's impossible dipshit"
+    dedup_constraints(&mut state.wanted_constraints);
+}
+
+pub fn total_dedup_constraints(c: &mut Vec<Constraint>) {
     let mut c = c;
     let mut c_len = c.len();
     let mut p_len = 0;
 
     while c_len != p_len {
         p_len = c.len();
-        c = dedup_constraints(c, state);
+        dedup_constraints(&mut c);
         c_len = c.len();
     }
 
     // move from "just control -1 bro" to "yeah that's impossible dipshit"
-    c = dedup_constraints(c, state);
-
-    return c;
+    dedup_constraints(&mut c);
 }
 
 /// Assumes that larger indexes are results that happened *earlier*
-pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
-    let mut r = r;
-    let mut dedup = Vec::with_capacity(r.len());
-
+pub fn dedup_results(r: &mut Vec<TokenResult>) {
     let mut hs = HashSet::new();
 
     let mut i = 0;
@@ -617,28 +622,22 @@ pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
         }
 
         // TODO: this needs to properly merge results of instructions into results of the gadget..
-        dedup.push(res);
         i += 1;
     }
-
-    return dedup;
 }
 
-pub fn total_dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
-    let mut c = c;
+pub fn total_dedup_results(c: &mut Vec<TokenResult>) {
     let mut c_len = c.len();
     let mut p_len = 0;
 
     while c_len != p_len {
         p_len = c.len();
-        c = dedup_results(c);
+        dedup_results(c);
         c_len = c.len();
     }
 
     // move from "just control -1 bro" to "yeah that's impossible dipshit"
-    c = dedup_results(c);
-
-    return c;
+    dedup_results(c);
 }
 
 pub fn is_constraint_vec_elementary(p: &Vec<Constraint>) -> Option<bool> {

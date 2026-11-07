@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     constraint::{Constraint, Token, TokenResult, elementary, total_dedup_constraints},
     gadget::Gadget,
@@ -15,8 +17,8 @@ pub struct State {
 impl State {
     pub fn initial() -> Self {
         Self {
-            fullfilled_effects: Vec::with_capacity(15),
-            wanted_constraints: Vec::with_capacity(15),
+            fullfilled_effects: Vec::with_capacity(5),
+            wanted_constraints: Vec::with_capacity(5),
         }
     }
 

@@ -77,7 +77,7 @@ fn main() {
                         &mut State::initial(),
                     ),)
                 })
-                .map(|gadget| (gadget.0.results.len(), gadget.0))
+                .map(|gadget| (gadget.0.results.len(), Arc::new(gadget.0)))
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<(_, _)>>();
@@ -93,24 +93,20 @@ fn main() {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
             binary(Register(RAX), IsEqual, Register(RCX)),
-            unary(Register(RSI), IsControlled),
-            unary(Register(RDI), IsControlled),
+            binary(Register(RBX), IsEqual, Register(RDX)),
         ],
         initial_state: State::initial(),
-        found_paths: vec![],
+        last_paths: HashSet::new(),
+        layers: 0,
     };
 
-    let mut num_searches = 0;
-
-    while num_searches < 6 {
+    while searcher.layers < 6 {
         println!(
-            "Tick {}: {} - {}",
-            num_searches,
-            searcher.found_paths.len(),
-            searcher.found_paths.last().unwrap_or(&HashSet::new()).len()
+            "Tick {}: {}",
+            searcher.layers,
+            searcher.last_paths.len(),
         );
         searcher.tick();
-        num_searches += 1;
     }
 
     println!("No solve found :(");

@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    sync::Arc,
     thread,
 };
 
@@ -8,7 +9,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::{
     constraint::{
         Constraint, Token, elementary, is_a_subset_of_b, is_constraint_vec_elementary, is_equal,
-        total_dedup_constraints,
+        total_dedup_constraints, total_dedup_constraints_for_state,
     },
     gadget::Gadget,
     hash_util::compute_hash,
@@ -20,16 +21,18 @@ use crate::{
 pub struct Searcher {
     pub initial_state: State,
     pub wanted: Vec<Constraint>,
-    pub gadgets: Vec<Gadget>,
+    pub gadgets: Vec<Arc<Gadget>>,
 
-    pub found_paths: Vec<HashSet<Path>>,
+    pub layers: u16,
+    pub last_paths: HashSet<Path>,
 }
 
 impl Searcher {
     pub fn tick(&mut self) {
-        let last = self.found_paths.last();
+        self.layers += 1;
+        let last = &self.last_paths;
 
-        if last.is_none() {
+        if last.is_empty() {
             let mut initial = Path::null();
             initial.ending_state = self.initial_state.clone().with_wanted(self.wanted.clone());
 
@@ -46,7 +49,7 @@ impl Searcher {
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
                 .map(|g| {
-                    let path = initial.clone().with_applied_gadget(g);
+                    let path = initial.clone().with_applied_gadget(g.clone());
 
                     if let Some(true) =
                         is_constraint_vec_elementary(&path.ending_state.wanted_constraints)
@@ -58,14 +61,11 @@ impl Searcher {
                 })
                 .collect::<HashSet<_>>();
 
-            self.found_paths.push(c);
+            self.last_paths = c;
         } else {
-            let last_u = last.unwrap();
-
             let mut this_layer = HashSet::new();
 
-            last_u
-                .iter()
+            last.iter()
                 .filter(|p| !p.ending_state.is_impossible())
                 .filter(|p| p.ending_state.wanted_constraints.len() < (2 + self.wanted.len()))
                 .for_each(|path| {
@@ -73,7 +73,7 @@ impl Searcher {
                         .gadgets
                         .par_iter()
                         .map(|gadget| {
-                            let new_path = path.clone().with_applied_gadget(gadget);
+                            let new_path = path.clone().with_applied_gadget(gadget.clone());
 
                             if let Some(true) = is_constraint_vec_elementary(
                                 &new_path.ending_state.wanted_constraints,
@@ -90,7 +90,8 @@ impl Searcher {
                         this_layer.insert(found);
                     }
                 });
-            self.found_paths.push(this_layer);
+
+            self.last_paths = this_layer;
         }
     }
 }
@@ -99,7 +100,7 @@ impl Searcher {
 pub struct Path {
     pub ending_state: State,
     /// Going backwards
-    pub executed_gadgets: Vec<Gadget>,
+    pub executed_gadgets: Vec<Arc<Gadget>>,
 }
 
 impl Path {
@@ -110,13 +111,15 @@ impl Path {
         }
     }
 
-    pub fn apply_gadget(&mut self, gadget: &Gadget) {
+    pub fn apply_gadget(&mut self, gadget: Arc<Gadget>) {
         let results = gadget.find_results(&mut self.ending_state);
 
-        let mut wanted_constraints = self.ending_state.wanted_constraints.clone();
         //println!("{:?} | wanted_constraints: {:?}", thread::current().id(), wanted_constraints);
 
-        wanted_constraints.append(&mut gadget.find_needed_constraints(&mut self.ending_state));
+        let mut needed_constraints = gadget.find_needed_constraints(&mut self.ending_state);
+        self.ending_state
+            .wanted_constraints
+            .append(&mut needed_constraints);
 
         //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
 
@@ -130,7 +133,7 @@ impl Path {
 
             // check if we are going to get it for free
             // (apply to the current state)
-            requirements = total_dedup_constraints(requirements, &mut self.ending_state);
+            total_dedup_constraints(&mut requirements);
 
             let final_res = is_constraint_vec_elementary(&requirements);
 
@@ -140,11 +143,11 @@ impl Path {
 
             if final_res != Some(false) {
                 // check if we want it / it fullfills stuff we want
-                while i < wanted_constraints.len() {
-                    let wanted_constraint = wanted_constraints[i];
+                while i < self.ending_state.wanted_constraints.len() {
+                    let wanted_constraint = self.ending_state.wanted_constraints[i];
 
                     if wanted_constraint.can_be_transposed_as(res, &mut requirements, false) {
-                        wanted_constraints.remove(i);
+                        self.ending_state.wanted_constraints.remove(i);
                         insert = true;
                         continue;
                     }
@@ -156,7 +159,9 @@ impl Path {
             //println!("{:?} | wanted_constraints after res: {:?} ({:?})", thread::current().id(), wanted_constraints, res);
 
             if insert {
-                wanted_constraints.append(&mut requirements);
+                self.ending_state
+                    .wanted_constraints
+                    .append(&mut requirements);
                 self.ending_state.fullfilled_effects.push(res.clone());
             }
 
@@ -168,10 +173,8 @@ impl Path {
         }
 
         //println!("{:?} | wanted_constraints predup: {:?}", thread::current().id(), wanted_constraints);
-        wanted_constraints = total_dedup_constraints(wanted_constraints, &mut self.ending_state);
+        total_dedup_constraints_for_state(&mut self.ending_state);
         //println!("{:?} | wanted_constraints postdup: {:?}", thread::current().id(), wanted_constraints);
-
-        self.ending_state.wanted_constraints = wanted_constraints;
 
         self.executed_gadgets.push(gadget.clone());
 
@@ -181,7 +184,7 @@ impl Path {
         }*/
     }
 
-    pub fn with_applied_gadget(self, gadget: &Gadget) -> Self {
+    pub fn with_applied_gadget(self, gadget: Arc<Gadget>) -> Self {
         let mut s = self;
         s.apply_gadget(gadget);
         s

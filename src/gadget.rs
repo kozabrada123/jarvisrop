@@ -74,18 +74,17 @@ impl Gadget {
         is: &Vec<Instruction>,
         state: &mut State,
     ) -> Vec<crate::constraint::Constraint> {
-        let mut cs = Vec::with_capacity(5 * is.len());
+        let mut cs = Vec::with_capacity(is.len());
 
         for ins in is.iter().rev() {
-            cs.append(&mut total_dedup_constraints(
-                ins.find_needed_constraints(state),
-                state,
-            ));
+            let mut needed = ins.find_needed_constraints(state);
+            total_dedup_constraints(&mut needed);
+            cs.append(&mut needed);
         }
 
         // Make later constraints earlier
         cs.reverse();
-        cs = total_dedup_constraints(cs, state);
+        total_dedup_constraints(&mut cs);
 
         return cs;
     }
@@ -94,15 +93,17 @@ impl Gadget {
         is: &Vec<Instruction>,
         state: &mut State,
     ) -> Vec<crate::constraint::TokenResult> {
-        let mut resus = Vec::with_capacity(5 * is.len());
+        let mut resus = Vec::with_capacity(is.len());
 
         for ins in is {
-            resus.append(&mut total_dedup_results(ins.find_results(state)));
+            let mut results = ins.find_results(state);
+            total_dedup_results(&mut results);
+            resus.append(&mut results);
         }
 
         // Make later results earlier
         resus.reverse();
-        resus = total_dedup_results(resus);
+        total_dedup_results(&mut resus);
 
         return resus;
     }
