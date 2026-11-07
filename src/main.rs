@@ -1,6 +1,6 @@
 use clap::Parser;
 use iced_x86::{
-    OpKind, Register::{R14, RAX, RCX, RDI},
+    OpKind, Register::{R12, R14, R15, RAX, RCX, RDI, RSI},
 };
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
@@ -12,10 +12,15 @@ use std::{
 };
 
 use crate::{
-    constraint::{binary, unary},
+    constraint::{
+        BinaryOperator::IsEqual,
+        UnaryOperator::{self, IsControlled},
+        binary, unary,
+    },
     instruction::{
         ImmediateOp::{U8, U16, U32, U64},
-        Instruction, Operand,
+        Instruction,
+        Operand::{self, Register},
     },
     search::{Path, Searcher},
     state::State,
@@ -89,12 +94,12 @@ fn main() {
     println!("Found {} gadgets..", gadget_count,);
 
     let mut searcher = Searcher {
-        gadgets: gadgets.into_iter().map(|(id, gadget)| gadget).collect(),
-        wanted: binary(
-            Operand::Register(RAX),
-            constraint::BinaryOperator::IsEqual,
-            Operand::Register(RDI)
-        ),
+        gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
+        wanted: vec![
+            unary(Register(RDI), IsControlled),
+            unary(Register(RSI), IsControlled),
+            unary(Register(RAX), IsControlled),
+        ],
         initial_state: State::initial(),
         found_solve: (0, Path::null()),
 
@@ -114,5 +119,5 @@ fn main() {
         num_searches += 1;
     }
 
-    println!("Found chain! {:?}", searcher.found_solve.1); 
+    println!("Found chain! {:?}", searcher.found_solve.1);
 }

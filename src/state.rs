@@ -5,7 +5,10 @@ use crate::{
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct State {
+    /// Starting at the last, going towards the first
     pub fullfilled_effects: Vec<TokenResult>,
+
+    /// Starting at the last, going towards the first
     pub wanted_constraints: Vec<Constraint>,
 }
 
@@ -17,11 +20,13 @@ impl State {
         }
     }
 
-    pub fn with_wanted(self, wanted: Constraint) -> Self {
+    pub fn with_wanted(self, wanted: Vec<Constraint>) -> Self {
         let mut s = self;
 
-        if !s.wanted_constraints.contains(&wanted) {
-            s.wanted_constraints.push(wanted);
+        for c in wanted {
+            if !s.wanted_constraints.contains(&c) {
+                s.wanted_constraints.push(c);
+            }
         }
 
         s

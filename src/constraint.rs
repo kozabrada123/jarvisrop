@@ -168,8 +168,9 @@ impl Constraint {
                         match effect {
                             Self::Binary(b) => match b.operator {
                                 BinaryOperator::IsEqual => {
-                                    // FIXME: can cause bugs
-                                    if op_overlap(b.target, u.target) {
+                                    // FIXME: op_a_part_of_b can cause bugs
+                                    // TODO: memory goofyness
+                                    if b.wanted_result.is_register() && op_a_part_of_b(u.target, b.target) {
                                         other.requirements.push(unary(b.wanted_result, u.operator));
                                         return true;
                                     }
@@ -193,7 +194,7 @@ impl Constraint {
                             Self::Binary(o) => match o.operator {
                                 BinaryOperator::IsEqual => {
                                     // FIXME: can cause bugs
-                                    if op_overlap(b.target, o.target) {
+                                    if op_a_part_of_b(b.target, o.target) {
                                         other.requirements.push(binary(
                                             o.wanted_result,
                                             b.operator,
@@ -304,7 +305,7 @@ impl BinaryConstraint {
     pub fn overwrites(&self, o: &Constraint) -> bool {
         match o {
             Constraint::Binary(b) => {
-                if !op_overlap(b.target, self.target) {
+                if !op_overlaps(b.target, self.target) {
                     return false;
                 }
 
@@ -318,7 +319,7 @@ impl BinaryConstraint {
                 return false;
             }
             Constraint::Unary(u) => {
-                if !op_overlap(u.target, self.target) {
+                if !op_overlaps(u.target, self.target) {
                     return false;
                 }
 
@@ -431,7 +432,7 @@ impl UnaryConstraint {
     pub fn overwrites(&self, o: &Constraint) -> bool {
         match o {
             Constraint::Binary(b) => {
-                if !op_overlap(b.target, self.target) {
+                if !op_overlaps(b.target, self.target) {
                     return false;
                 }
 
@@ -443,7 +444,7 @@ impl UnaryConstraint {
                 return false;
             }
             Constraint::Unary(u) => {
-                if !op_overlap(u.target, self.target) {
+                if !op_overlaps(u.target, self.target) {
                     return false;
                 }
 
@@ -510,17 +511,20 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
             return vec![con];
         }
 
-        // Check for later (earlier) ones that invalidate this one
-        for j in (i + 1)..c.len() {
+        // Check for later (earlier) ones that get invalidated by this one
+
+        let mut j = i + 1;
+        while j < c.len() {
             let later_con = &c[j];
 
-            if later_con.overwrites(&con) {
-                c.remove(i);
+            if con.overwrites(later_con) {
+                c.remove(j);
                 continue;
             }
+            j += 1;
         }
 
-        dedup.append(&mut con.flatten(state));
+        dedup.push(con);
         i += 1;
     }
 
@@ -552,18 +556,18 @@ pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
 
     let mut i = 0;
     while i < r.len() {
-        let mut res = r[i].clone();
+        let res = r[i].clone();
 
         if !hs.insert(res.clone()) {
             r.remove(i);
             continue;
         }
 
-        // check for later effects that overwrite this one
+        // check for later (earlier) effects that get overwriten by this one
         for j in (i + 1)..r.len() {
-            let later_con = &r[j];
+            let later_con = &mut r[j];
 
-            later_con.overwrite(&mut res);
+            res.overwrite(later_con);
         }
 
         // TODO: this needs to properly merge results of instructions into results of the gadget..
@@ -614,18 +618,18 @@ pub fn is_equal<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
     is_subset(a, b) && is_subset(b, a)
 }
 
-pub fn op_overlap(a: Operand, b: Operand) -> bool {
+pub fn op_overlaps(a: Operand, b: Operand) -> bool {
     // TODO: memory n shi
     if let Operand::Register(ar) = a
         && let Operand::Register(br) = b
     {
-        return overlap(ar, br);
+        return overlaps(ar, br);
     }
 
     false
 }
 
-pub fn overlap(a: iced_x86::Register, b: iced_x86::Register) -> bool {
+pub fn overlaps(a: iced_x86::Register, b: iced_x86::Register) -> bool {
     if a == b {
         return true;
     }
@@ -644,6 +648,40 @@ pub fn overlap(a: iced_x86::Register, b: iced_x86::Register) -> bool {
         return full_a == b;
     } else if full_a_not_none {
         return a == full_b;
+    }
+
+    return false;
+}
+
+pub fn op_a_part_of_b(a: Operand, b: Operand) -> bool {
+    // TODO: memory n shi
+    if let Operand::Register(ar) = a
+        && let Operand::Register(br) = b
+    {
+        return a_part_of_b(ar, br);
+    }
+
+    false
+}
+
+/// Returns true if a is smaller or equal to b
+pub fn a_part_of_b(a: iced_x86::Register, b: iced_x86::Register) -> bool {
+    if a == b {
+        return true;
+    }
+
+    let full_a = a.full_register();
+    let full_b = b.full_register();
+
+    let full_a_not_none = full_a != iced_x86::Register::None;
+    let full_b_not_none = full_b != iced_x86::Register::None;
+
+    if full_a_not_none && full_a == b {
+        return true;
+    }
+
+    if full_a_not_none && full_b_not_none && (full_a == full_b) {
+        return a.size() <= b.size();
     }
 
     return false;

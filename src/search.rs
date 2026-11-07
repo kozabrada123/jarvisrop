@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, thread};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -15,7 +15,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Searcher {
     pub initial_state: State,
-    pub wanted: Constraint,
+    pub wanted: Vec<Constraint>,
     pub gadgets: Vec<Gadget>,
 
     pub found_paths: Vec<HashMap<u64, Path>>,
@@ -42,7 +42,7 @@ impl Searcher {
                 .filter(|gadget| initial.is_useful_addition(&mut (*gadget).clone()))
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
-                .map(|g| Path::null().with_applied_gadget(g))
+                .map(|g| initial.clone().with_applied_gadget(g))
                 .map(|x| (compute_hash(&x), x))
                 .collect::<HashMap<_, _>>();
 
@@ -63,7 +63,7 @@ impl Searcher {
             last_u
                 .iter()
                 .filter(|p| !p.1.ending_state.is_impossible())
-                .filter(|p| p.1.ending_state.wanted_constraints.len() < 3)
+                .filter(|p| p.1.ending_state.wanted_constraints.len() < (3 + self.wanted.len()))
                 .for_each(|(id, path)| {
                     let found_developments = self
                         .gadgets
@@ -91,6 +91,7 @@ impl Searcher {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Path {
     pub ending_state: State,
+    /// Going backwards
     pub executed_gadgets: Vec<Gadget>,
     pub previous_hash: u64,
 }
@@ -108,15 +109,21 @@ impl Path {
         let mut results = gadget.find_results(&mut self.ending_state);
 
         let mut wanted_constraints = self.ending_state.wanted_constraints.clone();
+        //println!("{:?} | wanted_constraints: {:?}", thread::current().id(), wanted_constraints);
 
-        wanted_constraints.append(&mut gadget.find_needed_constraints(&mut self.ending_state));
+        let mut gadget_needed = gadget.find_needed_constraints(&mut self.ending_state);
+        gadget_needed.reverse();
+        wanted_constraints.append(&mut gadget_needed);
 
-        for res in results.iter_mut() {
+        //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
+
+        for res in results.iter_mut().rev() {
             let mut i = 0;
 
             let mut insert = false;
 
             let mut requirements = res.requirements.clone();
+            requirements.reverse();
 
             // check if we are going to get it for free
             // (apply to the current state)
@@ -143,21 +150,34 @@ impl Path {
                 }
             }
 
+            //println!("{:?} | wanted_constraints after res: {:?} ({:?})", thread::current().id(), wanted_constraints, res);
+
             if insert {
                 wanted_constraints.append(&mut requirements);
+                self.ending_state
+                    .fullfilled_effects
+                    .push(res.clone());
             }
+
+            /*println!(
+                "{:?} | wanted_constraints after res + req: {:?}",
+                thread::current().id(),
+                wanted_constraints
+            );*/
         }
 
+        //println!("{:?} | wanted_constraints predup: {:?}", thread::current().id(), wanted_constraints);
         wanted_constraints = total_dedup_constraints(wanted_constraints, &mut self.ending_state);
-
-        let mut gadget_results = gadget.find_results(&mut self.ending_state);
-        self.ending_state
-            .fullfilled_effects
-            .append(&mut gadget_results);
+        //println!("{:?} | wanted_constraints postdup: {:?}", thread::current().id(), wanted_constraints); 
 
         self.ending_state.wanted_constraints = wanted_constraints;
 
         self.executed_gadgets.push(gadget.clone());
+
+        /*if is_constraint_vec_elementary(&self.ending_state.wanted_constraints) == Some(true) {
+            println!("{:?} - {:?}", thread::current().id(), self);
+            std::process::exit(0);
+        }*/
     }
 
     pub fn with_applied_gadget(self, gadget: &Gadget) -> Self {

@@ -108,6 +108,29 @@ pub enum Operand {
     Memory(MemoryOp),
 }
 
+impl Operand {
+    pub fn is_register(&self) -> bool {
+        match self {
+            Self::Register(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_immediate(&self) -> bool {
+        match self {
+            Self::Immediate(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_memory(&self) -> bool {
+        match self {
+            Self::Memory(_) => true,
+            _ => false
+        }
+    }
+}
+
 impl fmt::Debug for Operand {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
