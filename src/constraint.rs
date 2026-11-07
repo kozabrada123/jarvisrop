@@ -154,7 +154,7 @@ impl Constraint {
     /// Returns true if other is a "transposition" of self
     ///
     /// For example, RAX is controlled can be rewritten as RAX = RDI where RDI is controlled
-    pub fn can_be_transposed_as(self, other: &mut TokenResult, heuristic: bool) -> bool {
+    pub fn can_be_transposed_as(self, other: &TokenResult, new_requirements: &mut Vec<Constraint>, heuristic: bool) -> bool {
         // Word for word the same
         if other.effects.contains(&self) {
             return true;
@@ -174,7 +174,7 @@ impl Constraint {
                                         && op_a_part_of_b(s.target, o.target)
                                     {
                                         if !heuristic {
-                                            other.requirements.push(unary(
+                                            new_requirements.push(unary(
                                                 o.wanted_result,
                                                 UnaryOperator::IsControlled,
                                             ));
@@ -211,7 +211,7 @@ impl Constraint {
                                         && op_a_part_of_b(s.target, o.target)
                                     {
                                         if !heuristic {
-                                            other.requirements.push(binary(
+                                            new_requirements.push(binary(
                                                 o.wanted_result,
                                                 BinaryOperator::IsEqual,
                                                 s.wanted_result,

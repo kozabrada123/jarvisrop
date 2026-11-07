@@ -1,10 +1,13 @@
-use std::{collections::HashMap, thread};
+use std::{
+    collections::{HashMap, HashSet},
+    thread,
+};
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     constraint::{
-        Constraint, Token, elementary, is_constraint_vec_elementary, is_equal, is_a_subset_of_b,
+        Constraint, Token, elementary, is_a_subset_of_b, is_constraint_vec_elementary, is_equal,
         total_dedup_constraints,
     },
     gadget::Gadget,
@@ -18,8 +21,8 @@ pub struct Searcher {
     pub wanted: Vec<Constraint>,
     pub gadgets: Vec<Gadget>,
 
-    pub found_paths: Vec<HashMap<u64, Path>>,
-    pub found_solve: (u64, Path),
+    pub found_paths: Vec<HashSet<Path>>,
+    pub found_solve: Path,
 }
 
 impl Searcher {
@@ -39,17 +42,16 @@ impl Searcher {
             let found_paths = self
                 .gadgets
                 .par_iter()
-                .filter(|gadget| initial.is_useful_addition(&mut (*gadget).clone(), true))
+                .filter(|gadget| initial.is_useful_addition(gadget).clone())
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
                 .map(|g| initial.clone().with_applied_gadget(g))
-                .map(|x| (compute_hash(&x), x))
-                .collect::<HashMap<_, _>>();
+                .collect::<HashSet<_>>();
 
-            found_paths.iter().for_each(|(id, p)| {
+            found_paths.iter().for_each(|p| {
                 if let Some(true) = is_constraint_vec_elementary(&p.ending_state.wanted_constraints)
                 {
-                    self.found_solve = (*id, p.clone());
+                    self.found_solve = p.clone();
                     return;
                 }
             });
@@ -58,30 +60,29 @@ impl Searcher {
         } else {
             let last_u = last.unwrap();
 
-            let mut this_layer = HashMap::new();
+            let mut this_layer = HashSet::new();
 
             last_u
                 .iter()
-                .filter(|p| !p.1.ending_state.is_impossible())
-                .filter(|p| p.1.ending_state.wanted_constraints.len() < (6 + self.wanted.len()))
-                .for_each(|(id, path)| {
+                .filter(|p| !p.ending_state.is_impossible())
+                .filter(|p| p.ending_state.wanted_constraints.len() < (2 + self.wanted.len()))
+                .for_each(|path| {
                     let found_developments = self
                         .gadgets
                         .par_iter()
-                        .filter(|gadget| path.is_useful_addition(&mut (*gadget).clone(), true))
-                        .map(|g| path.clone().with_applied_gadget_and_previous(g, *id))
-                        .map(|x| (compute_hash(&x), x))
-                        .collect::<HashMap<_, _>>();
+                        .map(|gadget| path.clone().with_applied_gadget(gadget))
+                        .filter(|new_path| !new_path.is_objectively_worse_than(path))
+                        .collect::<HashSet<_>>();
 
-                    found_developments.into_iter().for_each(|(id, p)| {
+                    found_developments.into_iter().for_each(|p| {
                         if let Some(true) =
                             is_constraint_vec_elementary(&p.ending_state.wanted_constraints)
                         {
-                            self.found_solve = (id, p.clone());
+                            self.found_solve = p.clone();
                             return;
                         }
 
-                        this_layer.insert(id, p);
+                        this_layer.insert(p);
                     });
                 });
 
@@ -117,7 +118,7 @@ impl Path {
 
         //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
 
-        for res in results.iter_mut().rev() {
+        for res in results.iter().rev() {
             let mut i = 0;
 
             let mut insert = false;
@@ -140,7 +141,7 @@ impl Path {
                 while i < wanted_constraints.len() {
                     let wanted_constraint = wanted_constraints[i];
 
-                    if wanted_constraint.can_be_transposed_as(res, false) {
+                    if wanted_constraint.can_be_transposed_as(res, &mut requirements, false) {
                         wanted_constraints.remove(i);
                         insert = true;
                         continue;
@@ -223,21 +224,16 @@ impl Path {
         return false;
     }
 
-    pub fn is_useful_addition(&self, g: &mut Gadget, heuristic: bool) -> bool {
-        let mut useful = false;
+    pub fn is_useful_addition(&self, g: &Gadget) -> bool {
         for wanted in &self.ending_state.wanted_constraints {
-            for effect in g.results.iter_mut() {
-                if wanted.can_be_transposed_as(effect, heuristic) {
-                    useful = true;
-
-                    if heuristic {
-                        return true;
-                    }
+            for effect in g.results.iter() {
+                if wanted.can_be_transposed_as(effect, &mut Vec::new(), true) {
+                     return true;
                 }
             }
         }
 
-        useful
+        false
     }
 
     pub fn is_impossible(&self) -> bool {

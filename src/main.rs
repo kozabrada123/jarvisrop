@@ -92,32 +92,32 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
-            unary(Register(AL), IsControlled),
+            unary(Register(RAX), IsControlled),
             unary(Register(RSI), IsControlled),
             unary(Register(RDI), IsControlled),
         ],
         initial_state: State::initial(),
-        found_solve: (0, Path::null()),
+        found_solve: Path::null(),
 
         found_paths: vec![],
     };
 
     let mut num_searches = 0;
 
-    while num_searches < 5 && searcher.found_solve.0 == 0 {
+    while num_searches < 5 && searcher.found_solve == Path::null() {
         println!(
             "Tick {}: {} - {}",
             num_searches,
             searcher.found_paths.len(),
-            searcher.found_paths.last().unwrap_or(&HashMap::new()).len()
+            searcher.found_paths.last().unwrap_or(&HashSet::new()).len()
         );
         searcher.tick();
         num_searches += 1;
     }
 
-    for path in searcher.found_paths.last().unwrap().iter().filter(|x| !x.1.is_impossible()) {
+    /*for path in searcher.found_paths.last().unwrap().iter().filter(|x| !x.is_impossible()) {
         println!("{:?}", path);
-    }
+    }*/
 
-    println!("Found chain! {:?}", searcher.found_solve.1);
+    println!("Found chain! {:?}", searcher.found_solve);
 }
