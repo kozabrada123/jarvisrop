@@ -136,7 +136,6 @@ impl Path {
                     if wanted_constraint.can_be_transposed_as(res) {
                         wanted_constraints.remove(i);
                         insert = true;
-                        println!("new: {:?}", res.requirements);
                         continue;
                     }
 

@@ -11,7 +11,10 @@ pub struct Gadget {
     pub inner: Arc<ropr::gadgets::Gadget>,
     pub instructions: Vec<Instruction>,
 
+    /// from the first result seen to the last
     pub results: Vec<crate::constraint::TokenResult>,
+
+    /// from the last constraint needed to the first
     pub constraints: Vec<crate::constraint::Constraint>,
 }
 
@@ -62,7 +65,7 @@ impl Gadget {
     fn calculate_needed_constraints(is: &Vec<Instruction>, state: &mut State) -> Vec<crate::constraint::Constraint> {
         let mut cs = Vec::with_capacity(5 * is.len());
 
-        for ins in is {
+        for ins in is.iter().rev() {
             cs.append(&mut total_dedup_constraints(ins.find_needed_constraints(state), state));
         }
 

@@ -93,7 +93,7 @@ fn main() {
         wanted: binary(
             Operand::Register(RAX),
             constraint::BinaryOperator::IsEqual,
-            Operand::Register(RCX)
+            Operand::Register(RDI)
         ),
         initial_state: State::initial(),
         found_solve: (0, Path::null()),

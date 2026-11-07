@@ -62,7 +62,7 @@ impl Token for Instruction {
                 let dst = self.operands[0].unwrap();
                 let src = self.operands[1].unwrap();
 
-                let requirements = vec![unary(src, UnaryOperator::IsControlled)];
+                let requirements = vec![elementary(true)];
                 let effects = vec![binary(dst, BinaryOperator::IsEqual, src)];
 
                 return vec![TokenResult {
@@ -91,6 +91,26 @@ impl Token for Instruction {
 pub struct TokenResult {
     pub requirements: Vec<Constraint>,
     pub effects: Vec<Constraint>,
+}
+
+impl TokenResult {
+    /// How would self, if executed after o, overwrite it?
+    pub fn overwrite(&self, o: &mut TokenResult) {
+        let mut i = 0;
+        while i < o.effects.len() {
+            let eff = o.effects[i].clone();
+
+            for later_eff in &self.effects {
+                if later_eff.overwrites(&eff) {
+                    o.effects.remove(i);
+                    i -= 1;
+                    break;
+                }
+            }
+
+            i += 1;
+        }
+    }
 }
 
 impl fmt::Debug for TokenResult {
@@ -148,7 +168,8 @@ impl Constraint {
                         match effect {
                             Self::Binary(b) => match b.operator {
                                 BinaryOperator::IsEqual => {
-                                    if b.target == u.target {
+                                    // FIXME: can cause bugs
+                                    if op_overlap(b.target, u.target) {
                                         other.requirements.push(unary(b.wanted_result, u.operator));
                                         return true;
                                     }
@@ -171,14 +192,13 @@ impl Constraint {
                         match effect {
                             Self::Binary(o) => match o.operator {
                                 BinaryOperator::IsEqual => {
-                                    if b.target == o.target {
-                                        println!("Weewoo 1/2! {:?}", other.requirements);
+                                    // FIXME: can cause bugs
+                                    if op_overlap(b.target, o.target) {
                                         other.requirements.push(binary(
                                             o.wanted_result,
                                             b.operator,
                                             b.wanted_result,
                                         ));
-                                        println!("Weewoo 2/2! {:?}", other.requirements);
                                         return true;
                                     }
                                 }
@@ -196,6 +216,15 @@ impl Constraint {
                 return always_value;
             }
             _ => false,
+        }
+    }
+
+    /// Would self, if executed after o, overwrite it?
+    pub fn overwrites(&self, o: &Constraint) -> bool {
+        match self {
+            Constraint::Elementary(_) => false,
+            Constraint::Unary(u) => u.overwrites(o),
+            Constraint::Binary(b) => b.overwrites(o),
         }
     }
 }
@@ -268,6 +297,41 @@ impl BinaryConstraint {
                     })];
                 }
             },
+        }
+    }
+
+    /// Would self, if executed after o, overwrite it?
+    pub fn overwrites(&self, o: &Constraint) -> bool {
+        match o {
+            Constraint::Binary(b) => {
+                if !op_overlap(b.target, self.target) {
+                    return false;
+                }
+
+                // TODO: direct evaluation with immediates, ...
+                if self.operator == BinaryOperator::IsEqual && b.operator == BinaryOperator::IsEqual
+                {
+                    return true;
+                }
+
+                // TODO: can't know for sure
+                return false;
+            }
+            Constraint::Unary(u) => {
+                if !op_overlap(u.target, self.target) {
+                    return false;
+                }
+
+                if self.operator == BinaryOperator::IsEqual
+                    && u.operator == UnaryOperator::IsControlled
+                {
+                    return true;
+                }
+
+                // TODO: can't know for sure
+                return false;
+            }
+            Constraint::Elementary(_) => false,
         }
     }
 }
@@ -362,6 +426,37 @@ impl UnaryConstraint {
             }
         }
     }
+
+    /// Would self, if executed after o, overwrite it?
+    pub fn overwrites(&self, o: &Constraint) -> bool {
+        match o {
+            Constraint::Binary(b) => {
+                if !op_overlap(b.target, self.target) {
+                    return false;
+                }
+
+                if b.operator == BinaryOperator::IsEqual {
+                    return true;
+                }
+
+                // TODO: can't know for sure
+                return false;
+            }
+            Constraint::Unary(u) => {
+                if !op_overlap(u.target, self.target) {
+                    return false;
+                }
+
+                if self.operator == UnaryOperator::IsControlled {
+                    return true;
+                }
+
+                // TODO: can't know for sure
+                return false;
+            }
+            Constraint::Elementary(_) => false,
+        }
+    }
 }
 
 /// ElementaryConstraint(true) is always true, such as 1 = 1
@@ -403,7 +498,7 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
 
     let mut i = 0;
     while i < c.len() {
-        let con = c[c.len() - 1 - i];
+        let con = c[i];
 
         if !hs.insert(con) {
             c.remove(i);
@@ -413,6 +508,16 @@ pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constrain
         // impossible, whole chain is impossible
         if con.eq(&elementary(false)) {
             return vec![con];
+        }
+
+        // Check for later (earlier) ones that invalidate this one
+        for j in (i + 1)..c.len() {
+            let later_con = &c[j];
+
+            if later_con.overwrites(&con) {
+                c.remove(i);
+                continue;
+            }
         }
 
         dedup.append(&mut con.flatten(state));
@@ -439,23 +544,30 @@ pub fn total_dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Con
     return c;
 }
 
-pub fn dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
-    let mut c = c;
-    let mut dedup = Vec::with_capacity(c.len());
+pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
+    let mut r = r;
+    let mut dedup = Vec::with_capacity(r.len());
 
     let mut hs = HashSet::new();
 
     let mut i = 0;
-    while i < c.len() {
-        let con = c[c.len() - 1 - i].clone();
+    while i < r.len() {
+        let mut res = r[i].clone();
 
-        if !hs.insert(con.clone()) {
-            c.remove(i);
+        if !hs.insert(res.clone()) {
+            r.remove(i);
             continue;
         }
 
+        // check for later effects that overwrite this one
+        for j in (i + 1)..r.len() {
+            let later_con = &r[j];
+
+            later_con.overwrite(&mut res);
+        }
+
         // TODO: this needs to properly merge results of instructions into results of the gadget..
-        dedup.push(con);
+        dedup.push(res);
         i += 1;
     }
 
@@ -500,4 +612,39 @@ pub fn is_subset<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
 
 pub fn is_equal<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
     is_subset(a, b) && is_subset(b, a)
+}
+
+pub fn op_overlap(a: Operand, b: Operand) -> bool {
+    // TODO: memory n shi
+    if let Operand::Register(ar) = a
+        && let Operand::Register(br) = b
+    {
+        return overlap(ar, br);
+    }
+
+    false
+}
+
+pub fn overlap(a: iced_x86::Register, b: iced_x86::Register) -> bool {
+    if a == b {
+        return true;
+    }
+
+    let full_a = a.full_register();
+    let full_b = b.full_register();
+
+    let full_a_not_none = full_a != iced_x86::Register::None;
+    let full_b_not_none = full_b != iced_x86::Register::None;
+
+    if full_a_not_none && full_b_not_none {
+        return full_a == full_b;
+    }
+
+    if full_a_not_none {
+        return full_a == b;
+    } else if full_a_not_none {
+        return a == full_b;
+    }
+
+    return false;
 }
