@@ -4,7 +4,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     constraint::{
-        Constraint, Token, elementary, is_constraint_vec_elementary, is_equal, is_subset,
+        Constraint, Token, elementary, is_constraint_vec_elementary, is_equal, is_a_subset_of_b,
         total_dedup_constraints,
     },
     gadget::Gadget,
@@ -39,7 +39,7 @@ impl Searcher {
             let found_paths = self
                 .gadgets
                 .par_iter()
-                .filter(|gadget| initial.is_useful_addition(&mut (*gadget).clone()))
+                .filter(|gadget| initial.is_useful_addition(&mut (*gadget).clone(), true))
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
                 .map(|g| initial.clone().with_applied_gadget(g))
@@ -63,12 +63,12 @@ impl Searcher {
             last_u
                 .iter()
                 .filter(|p| !p.1.ending_state.is_impossible())
-                .filter(|p| p.1.ending_state.wanted_constraints.len() < (3 + self.wanted.len()))
+                .filter(|p| p.1.ending_state.wanted_constraints.len() < (6 + self.wanted.len()))
                 .for_each(|(id, path)| {
                     let found_developments = self
                         .gadgets
                         .par_iter()
-                        .filter(|gadget| path.is_useful_addition(&mut (*gadget).clone()))
+                        .filter(|gadget| path.is_useful_addition(&mut (*gadget).clone(), true))
                         .map(|g| path.clone().with_applied_gadget_and_previous(g, *id))
                         .map(|x| (compute_hash(&x), x))
                         .collect::<HashMap<_, _>>();
@@ -84,6 +84,8 @@ impl Searcher {
                         this_layer.insert(id, p);
                     });
                 });
+
+            self.found_paths.push(this_layer);
         }
     }
 }
@@ -111,9 +113,7 @@ impl Path {
         let mut wanted_constraints = self.ending_state.wanted_constraints.clone();
         //println!("{:?} | wanted_constraints: {:?}", thread::current().id(), wanted_constraints);
 
-        let mut gadget_needed = gadget.find_needed_constraints(&mut self.ending_state);
-        gadget_needed.reverse();
-        wanted_constraints.append(&mut gadget_needed);
+        wanted_constraints.append(&mut gadget.find_needed_constraints(&mut self.ending_state));
 
         //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
 
@@ -140,7 +140,7 @@ impl Path {
                 while i < wanted_constraints.len() {
                     let wanted_constraint = wanted_constraints[i];
 
-                    if wanted_constraint.can_be_transposed_as(res) {
+                    if wanted_constraint.can_be_transposed_as(res, false) {
                         wanted_constraints.remove(i);
                         insert = true;
                         continue;
@@ -154,9 +154,7 @@ impl Path {
 
             if insert {
                 wanted_constraints.append(&mut requirements);
-                self.ending_state
-                    .fullfilled_effects
-                    .push(res.clone());
+                self.ending_state.fullfilled_effects.push(res.clone());
             }
 
             /*println!(
@@ -168,7 +166,7 @@ impl Path {
 
         //println!("{:?} | wanted_constraints predup: {:?}", thread::current().id(), wanted_constraints);
         wanted_constraints = total_dedup_constraints(wanted_constraints, &mut self.ending_state);
-        //println!("{:?} | wanted_constraints postdup: {:?}", thread::current().id(), wanted_constraints); 
+        //println!("{:?} | wanted_constraints postdup: {:?}", thread::current().id(), wanted_constraints);
 
         self.ending_state.wanted_constraints = wanted_constraints;
 
@@ -196,22 +194,22 @@ impl Path {
     /// Returns true if the given path is mathematically worse in every way
     pub fn is_objectively_worse_than(&self, other: &Self) -> bool {
         // Uncomperable
-        if !is_equal(
+        /*if !is_equal(
             &self.ending_state.fullfilled_effects,
             &other.ending_state.fullfilled_effects,
         ) {
             return false;
-        }
+        }*/
 
         // Same results
 
         // other needs less or equal constraints
-        if is_subset(
+        if is_a_subset_of_b(
             &other.ending_state.wanted_constraints,
             &self.ending_state.wanted_constraints,
         ) {
             // They are equal, compare number of gadgets
-            if is_subset(
+            if is_a_subset_of_b(
                 &self.ending_state.wanted_constraints,
                 &other.ending_state.wanted_constraints,
             ) {
@@ -225,12 +223,16 @@ impl Path {
         return false;
     }
 
-    pub fn is_useful_addition(&self, g: &mut Gadget) -> bool {
+    pub fn is_useful_addition(&self, g: &mut Gadget, heuristic: bool) -> bool {
         let mut useful = false;
         for wanted in &self.ending_state.wanted_constraints {
             for effect in g.results.iter_mut() {
-                if wanted.can_be_transposed_as(effect) {
+                if wanted.can_be_transposed_as(effect, heuristic) {
                     useful = true;
+
+                    if heuristic {
+                        return true;
+                    }
                 }
             }
         }

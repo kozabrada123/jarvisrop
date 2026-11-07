@@ -104,7 +104,7 @@ fn main() {
 
     let mut num_searches = 0;
 
-    while num_searches < 10 && searcher.found_solve.0 == 0 {
+    while num_searches < 5 && searcher.found_solve.0 == 0 {
         println!(
             "Tick {}: {} - {}",
             num_searches,
@@ -113,6 +113,10 @@ fn main() {
         );
         searcher.tick();
         num_searches += 1;
+    }
+
+    for path in searcher.found_paths.last().unwrap().iter().filter(|x| !x.1.is_impossible()) {
+        println!("{:?}", path);
     }
 
     println!("Found chain! {:?}", searcher.found_solve.1);

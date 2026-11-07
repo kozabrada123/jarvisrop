@@ -83,6 +83,8 @@ impl Gadget {
             ));
         }
 
+        // Make later constraints earlier
+        cs.reverse();
         cs = total_dedup_constraints(cs, state);
 
         return cs;
@@ -98,6 +100,8 @@ impl Gadget {
             resus.append(&mut total_dedup_results(ins.find_results(state)));
         }
 
+        // Make later results earlier
+        resus.reverse();
         resus = total_dedup_results(resus);
 
         return resus;

@@ -154,7 +154,7 @@ impl Constraint {
     /// Returns true if other is a "transposition" of self
     ///
     /// For example, RAX is controlled can be rewritten as RAX = RDI where RDI is controlled
-    pub fn can_be_transposed_as(self, other: &mut TokenResult) -> bool {
+    pub fn can_be_transposed_as(self, other: &mut TokenResult, heuristic: bool) -> bool {
         // Word for word the same
         if other.effects.contains(&self) {
             return true;
@@ -173,10 +173,12 @@ impl Constraint {
                                     if o.wanted_result.is_register()
                                         && op_a_part_of_b(s.target, o.target)
                                     {
-                                        other.requirements.push(unary(
-                                            o.wanted_result,
-                                            UnaryOperator::IsControlled,
-                                        ));
+                                        if !heuristic {
+                                            other.requirements.push(unary(
+                                                o.wanted_result,
+                                                UnaryOperator::IsControlled,
+                                            ));
+                                        }
                                         return true;
                                     }
                                 }
@@ -208,11 +210,13 @@ impl Constraint {
                                     if o.wanted_result.is_register()
                                         && op_a_part_of_b(s.target, o.target)
                                     {
-                                        other.requirements.push(binary(
-                                            o.wanted_result,
-                                            BinaryOperator::IsEqual,
-                                            s.wanted_result,
-                                        ));
+                                        if !heuristic {
+                                            other.requirements.push(binary(
+                                                o.wanted_result,
+                                                BinaryOperator::IsEqual,
+                                                s.wanted_result,
+                                            ));
+                                        }
                                         return true;
                                     }
                                 }
@@ -504,6 +508,7 @@ pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Con
     })
 }
 
+/// Assume that bigger indexes are constraints that are needed earlier
 pub fn dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Constraint> {
     let mut c = c;
     let mut dedup = Vec::with_capacity(c.len());
@@ -561,6 +566,7 @@ pub fn total_dedup_constraints(c: Vec<Constraint>, state: &mut State) -> Vec<Con
     return c;
 }
 
+/// Assumes that larger indexes are results that happened *earlier*
 pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
     let mut r = r;
     let mut dedup = Vec::with_capacity(r.len());
@@ -574,6 +580,33 @@ pub fn dedup_results(r: Vec<TokenResult>) -> Vec<TokenResult> {
         if !hs.insert(res.clone()) {
             r.remove(i);
             continue;
+        }
+
+        // TODO: should be improved: check for mov rax, rcx; mov rcx; rax
+        let res_plus_1_o = r.get(i + 1);
+
+        if let Some(res_plus_1) = res_plus_1_o
+            && res.effects.len() == 1
+            && res_plus_1.effects.len() == 1
+        {
+            let e1 = res.effects[0];
+            let e2 = res_plus_1.effects[0];
+
+            match (e1, e2) {
+                (Constraint::Binary(b1), Constraint::Binary(b2)) => {
+                    let movs = b1.operator == BinaryOperator::IsEqual && b1.operator == b2.operator;
+                    let opposing = b1.target == b2.wanted_result && b1.wanted_result == b2.target;
+
+                    if movs && opposing {
+                        // mov 2, 1
+                        // mov 1, 2
+                        // -> the second is a no-op
+                        r.remove(i);
+                        continue;
+                    }
+                }
+                _ => {}
+            }
         }
 
         // check for later (earlier) effects that get overwriten by this one
@@ -623,12 +656,12 @@ pub fn is_constraint_vec_elementary(p: &Vec<Constraint>) -> Option<bool> {
     None
 }
 
-pub fn is_subset<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
+pub fn is_a_subset_of_b<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
     a.iter().all(|c| b.contains(c))
 }
 
 pub fn is_equal<T: std::cmp::PartialEq>(a: &Vec<T>, b: &Vec<T>) -> bool {
-    is_subset(a, b) && is_subset(b, a)
+    is_a_subset_of_b(a, b) && is_a_subset_of_b(b, a)
 }
 
 pub fn op_overlaps(a: Operand, b: Operand) -> bool {
