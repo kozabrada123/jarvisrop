@@ -1,17 +1,20 @@
-use std::sync::Arc;
+use std::hash::{Hash, Hasher};
 
-use crate::{
-    constraint::{Constraint, Token, TokenResult, elementary, total_dedup_constraints},
-    gadget::Gadget,
-};
+use crate::constraint::{Constraint, TokenResult, elementary};
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct State {
     /// Starting at the last, going towards the first
     pub fullfilled_effects: Vec<TokenResult>,
 
     /// Starting at the last, going towards the first
     pub wanted_constraints: Vec<Constraint>,
+}
+
+impl Hash for State {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.wanted_constraints.hash(state);
+    }
 }
 
 impl State {

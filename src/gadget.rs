@@ -1,6 +1,5 @@
 use std::{
-    fmt::{self, Write},
-    sync::Arc,
+    fmt::{self, Write}, hash::{Hash, Hasher}, sync::Arc,
 };
 
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
     state::State,
 };
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Gadget {
     pub inner: Arc<ropr::gadgets::Gadget>,
     pub instructions: Vec<Instruction>,
@@ -22,6 +21,13 @@ pub struct Gadget {
 
     /// from the last constraint needed to the first
     pub constraints: Vec<crate::constraint::Constraint>,
+}
+
+impl Hash for Gadget {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.results.hash(state);
+        self.constraints.hash(state);
+    }
 }
 
 impl fmt::Debug for Gadget {

@@ -1,18 +1,18 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
+    hash::{Hash, Hasher},
     sync::Arc,
-    thread,
 };
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rustc_hash::FxHashSet;
 
 use crate::{
     constraint::{
-        Constraint, Token, elementary, is_a_subset_of_b, is_constraint_vec_elementary, is_equal,
-        total_dedup_constraints, total_dedup_constraints_for_state,
+        Constraint, Token, is_a_subset_of_b, is_constraint_vec_elementary, total_dedup_constraints,
+        total_dedup_constraints_for_state,
     },
     gadget::Gadget,
-    hash_util::compute_hash,
     print_solve,
     state::State,
 };
@@ -24,7 +24,7 @@ pub struct Searcher {
     pub gadgets: Vec<Arc<Gadget>>,
 
     pub layers: u16,
-    pub last_paths: HashSet<Path>,
+    pub last_paths: FxHashSet<Path>,
 }
 
 impl Searcher {
@@ -45,7 +45,7 @@ impl Searcher {
             let c = self
                 .gadgets
                 .par_iter()
-                .filter(|gadget| initial.is_useful_addition(gadget).clone())
+                .filter(|gadget| initial.is_useful_addition(gadget))
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
                 .map(|g| {
@@ -59,11 +59,11 @@ impl Searcher {
 
                     path
                 })
-                .collect::<HashSet<_>>();
+                .collect::<FxHashSet<_>>();
 
             self.last_paths = c;
         } else {
-            let mut this_layer = HashSet::new();
+            let mut this_layer = FxHashSet::default();
 
             last.iter()
                 .filter(|p| !p.ending_state.is_impossible())
@@ -84,7 +84,7 @@ impl Searcher {
                             new_path
                         })
                         .filter(|new_path| !new_path.is_objectively_worse_than(path))
-                        .collect::<HashSet<_>>();
+                        .collect::<FxHashSet<_>>();
 
                     for found in found_developments {
                         this_layer.insert(found);
@@ -96,11 +96,17 @@ impl Searcher {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Path {
     pub ending_state: State,
     /// Going backwards
     pub executed_gadgets: Vec<Arc<Gadget>>,
+}
+
+impl Hash for Path {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ending_state.hash(state);
+    }
 }
 
 impl Path {

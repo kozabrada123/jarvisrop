@@ -2,26 +2,17 @@ use clap::Parser;
 use iced_x86::{OpKind, Register::*};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
-use rustc_hash::FxHashMap;
+use rustc_hash::FxHashSet;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashSet},
     path::PathBuf,
     sync::Arc,
 };
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual,
-        UnaryOperator::{self, IsControlled},
-        a_part_of_b, binary, unary,
-    },
-    instruction::{
-        ImmediateOp::{U8, U16, U32, U64},
-        Instruction,
-        Operand::{self, Register},
-    },
-    search::{Path, Searcher},
-    state::State,
+        BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, unary,
+    }, instruction::Operand::Register, search::{Path, Searcher}, state::State,
 };
 
 pub mod constraint;
@@ -78,9 +69,9 @@ fn main() {
                     ),)
                 })
                 .map(|gadget| (gadget.0.results.len(), Arc::new(gadget.0)))
-                .collect::<Vec<_>>()
+                .collect::<FxHashSet<_>>()
         })
-        .collect::<Vec<(_, _)>>();
+        .collect::<FxHashSet<(_, _)>>();
 
     let mut gadgets = gadgets.into_iter().collect::<Vec<_>>();
     gadgets.sort_unstable_by(|(complexity1, _), (complexity2, _)| complexity1.cmp(complexity2));
@@ -93,10 +84,10 @@ fn main() {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
             binary(Register(RAX), IsEqual, Register(RCX)),
-            binary(Register(RBX), IsEqual, Register(RDX)),
+            unary(Register(RDI), IsControlled)
         ],
         initial_state: State::initial(),
-        last_paths: HashSet::new(),
+        last_paths: FxHashSet::default(),
         layers: 0,
     };
 
