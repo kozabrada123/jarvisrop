@@ -20,7 +20,7 @@ pub trait Token {
 impl Token for Instruction {
     fn find_needed_constraints(&self, state: &mut State) -> Vec<Constraint> {
         match self.inner.mnemonic() {
-            iced_x86::Mnemonic::Mov => {
+            iced_x86::Mnemonic::Mov | iced_x86::Mnemonic::Cmp | iced_x86::Mnemonic::Test => {
                 let dst = self.operands[0].unwrap();
                 let src = self.operands[1].unwrap();
 
@@ -38,7 +38,7 @@ impl Token for Instruction {
 
                 match src {
                     Operand::Memory(_) => {
-                        c.push(unary(dst, UnaryOperator::IsWritableAddr));
+                        c.push(unary(dst, UnaryOperator::IsReadableAddr));
                     }
                     _ => {}
                 }
@@ -49,6 +49,12 @@ impl Token for Instruction {
                 vec![elementary(true)]
             }
             iced_x86::Mnemonic::Ret => {
+                vec![elementary(true)]
+            }
+            iced_x86::Mnemonic::Nop => {
+                vec![elementary(true)]
+            }
+            iced_x86::Mnemonic::Clc | iced_x86::Mnemonic::Cli | iced_x86::Mnemonic::Cld => {
                 vec![elementary(true)]
             }
             // TODO:
@@ -80,6 +86,19 @@ impl Token for Instruction {
                     requirements,
                     effects,
                 }];
+            }
+            iced_x86::Mnemonic::Ret => {
+                // Don't bother with ret 0x4a95; and such
+                if self.operands[0].is_some() {
+                    vec![elementary(false)];
+                }
+                vec![]
+            }
+            iced_x86::Mnemonic::Clc | iced_x86::Mnemonic::Cli | iced_x86::Mnemonic::Cld => {
+                vec![TokenResult {
+                    requirements: vec![elementary(true)],
+                    effects: vec![],
+                }]
             }
             // TODO:
             _ => vec![],
@@ -154,7 +173,12 @@ impl Constraint {
     /// Returns true if other is a "transposition" of self
     ///
     /// For example, RAX is controlled can be rewritten as RAX = RDI where RDI is controlled
-    pub fn can_be_transposed_as(self, other: &TokenResult, new_requirements: &mut Vec<Constraint>, heuristic: bool) -> bool {
+    pub fn can_be_transposed_as(
+        self,
+        other: &TokenResult,
+        new_requirements: &mut Vec<Constraint>,
+        heuristic: bool,
+    ) -> bool {
         // Word for word the same
         if other.effects.contains(&self) {
             return true;
@@ -515,6 +539,11 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>) {
     let mut i = 0;
     while i < c.len() {
         let con = c[i];
+
+        if con == elementary(true) {
+            c.remove(i);
+            continue;
+        }
 
         if !hs.insert(con) {
             c.remove(i);

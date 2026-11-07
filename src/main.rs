@@ -83,22 +83,16 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
+            unary(Register(RDX), IsControlled),
             binary(Register(RAX), IsEqual, Register(RCX)),
-            unary(Register(RDI), IsControlled)
         ],
         initial_state: State::initial(),
         last_paths: FxHashSet::default(),
         layers: 0,
     };
 
-    while searcher.layers < 6 {
-        println!(
-            "Tick {}: {}",
-            searcher.layers,
-            searcher.last_paths.len(),
-        );
-        searcher.tick();
-    }
+    searcher.tick();
+    searcher.tick();
 
     println!("No solve found :(");
 }
@@ -114,7 +108,7 @@ pub fn print_solve(chain: Path) {
         solve_str.push_str(&format!("  - {:?}\n", constraint));
     }
     solve_str.push_str("\n- fullfilled effects:\n");
-    for effect in chain.ending_state.fullfilled_effects {
+    for effect in chain.ending_state.fullfilled_effects.iter().rev() {
         solve_str.push_str(&format!("  - {:?}\n", effect));
     }
     solve_str.push_str("\nGadgets:\n");

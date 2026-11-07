@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use rayon::iter::{IntoParallelRefIterator, ParallelExtend, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 
 use crate::{
@@ -44,6 +44,7 @@ impl Searcher {
             let c = self
                 .gadgets
                 .par_iter()
+                .filter(|gadget| !gadget.is_impossible())
                 .filter(|gadget| initial.is_useful_addition(gadget))
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
@@ -62,34 +63,69 @@ impl Searcher {
 
             self.last_paths = c;
         } else {
-            let mut this_layer = FxHashSet::default();
+            println!("DFS-ing over {} starts..", last.len());
 
-            last.iter()
+            for i in last {
+                println!("{:?}", i.executed_gadgets);
+            }
+
+            // DFS!!!
+            last.par_iter()
                 .filter(|p| !p.ending_state.is_impossible())
-                .filter(|p| p.ending_state.wanted_constraints.len() < (2 + self.wanted.len()))
-                .for_each(|path| {
-                    let found_developments = self
-                        .gadgets
-                        .par_iter()
-                        .filter(|gadget| path.is_useful_addition(gadget))
-                        .map(|gadget| {
-                            let new_path = path.clone().with_applied_gadget(gadget.clone());
+                .for_each(|grandma_path| {
+                    let mut current_path = grandma_path.clone();
+                    let mut parents = Vec::new();
+
+                    'out: loop {
+                        // At the end, we are boned if we don't find anything
+                        let mut end_of_the_line = true;
+
+                        'gadgets: for gadget in self
+                            .gadgets
+                            .iter()
+                            .filter(|gadget| !gadget.is_impossible())
+                            .filter(|gadget| current_path.is_useful_addition(gadget))
+                        {
+                            let new_path = current_path.clone().with_applied_gadget(gadget.clone());
 
                             if let Some(true) = is_constraint_vec_elementary(
                                 &new_path.ending_state.wanted_constraints,
                             ) {
                                 print_solve(new_path.clone());
+                                break 'out;
                             }
 
-                            new_path
-                        })
-                        .filter(|new_path| !new_path.is_objectively_worse_than(path))
-                        .collect::<FxHashSet<_>>();
+                            if parents.len() > 50 {
+                                break 'gadgets;
+                            }
 
-                    this_layer.par_extend(found_developments);
+                            // Go one layer deeper!
+                            let new = new_path.ending_state.wanted_constraints.len();
+                            let old = current_path.ending_state.wanted_constraints.len();
+                            let obj_worse = current_path.is_objectively_worse_than(&new_path);
+
+                            if new < old
+                                || (new == old
+                                    && new_path.ending_state.wanted_constraints
+                                        != current_path.ending_state.wanted_constraints)
+                                || obj_worse
+                            {
+                                parents.push(current_path);
+                                current_path = new_path;
+                                end_of_the_line = false;
+                                break 'gadgets;
+                            }
+
+                            else {
+                                //println!("EOTL: {:?} vs {:?} -- {:?}", new_path.ending_state.wanted_constraints, current_path.ending_state.wanted_constraints, new_path.executed_gadgets);
+                            }
+                        }
+
+                        if end_of_the_line {
+                            break;
+                        }
+                    }
                 });
-
-            self.last_paths = this_layer;
         }
     }
 }

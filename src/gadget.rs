@@ -1,14 +1,13 @@
 use std::{
-    fmt::{self, Write}, hash::{Hash, Hasher}, sync::Arc,
+    fmt::{self, Write},
+    hash::{Hash, Hasher},
+    sync::Arc,
 };
 
 use crate::{
     constraint::{
-        Token, dedup_constraints, dedup_results, total_dedup_constraints, total_dedup_results,
-    },
-    hash_util::compute_hash,
-    instruction::Instruction,
-    state::State,
+        Token, dedup_constraints, dedup_results, elementary, total_dedup_constraints, total_dedup_results,
+    }, hash_util::compute_hash, instruction::Instruction, state::State,
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -112,5 +111,15 @@ impl Gadget {
         total_dedup_results(&mut resus);
 
         return resus;
+    }
+
+    pub fn is_impossible(&self) -> bool {
+        for c in &self.constraints {
+            if c == &elementary(false) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
