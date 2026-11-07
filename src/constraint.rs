@@ -1,5 +1,353 @@
+use std::collections::HashSet;
+
+use iced_x86::Register;
+
+use crate::{
+    constraint::Constraint::Unary, hash_util::compute_hash, instruction::{Instruction, Operand},
+};
+
+pub trait Token {
+    /// Find the constraints the token needs to execute
+    fn find_needed_constraints(&self) -> Vec<Constraint>;
+
+    /// Find the results that this token has
+    fn find_results(&self) -> Vec<TokenResult>;
+}
+
+impl Token for Instruction {
+    fn find_needed_constraints(&self) -> Vec<Constraint> {
+        match self.inner.mnemonic() {
+            iced_x86::Mnemonic::Mov => {
+                let dst = self.operands[0].unwrap();
+                let src = self.operands[1].unwrap();
+
+                let mut c = Vec::new();
+
+                match dst {
+                    Operand::Immediate(_) => {
+                        return vec![elementary(false)];
+                    }
+                    Operand::Memory(_) => {
+                        c.push(unary(dst, UnaryOperator::IsWritableAddr));
+                    }
+                    Operand::Register(_) => {}
+                }
+
+                match src {
+                    Operand::Memory(_) => {
+                        c.push(unary(dst, UnaryOperator::IsWritableAddr));
+                    }
+                    _ => {}
+                }
+
+                return c;
+            }
+            // TODO:
+            _ => vec![elementary(false)],
+        }
+    }
+
+    fn find_results(&self) -> Vec<TokenResult> {
+        match self.inner.mnemonic() {
+            iced_x86::Mnemonic::Mov => {
+                let dst = self.operands[0].unwrap();
+                let src = self.operands[1].unwrap();
+
+                let requirements = vec![unary(src, UnaryOperator::IsControlled)];
+                let effects = vec![binary(dst, BinaryOperator::IsEqual, src)];
+
+                return vec![TokenResult {
+                    requirements,
+                    effects,
+                }];
+            }
+            iced_x86::Mnemonic::Pop => {
+                let dst = self.operands[0].unwrap();
+
+                let requirements = vec![elementary(true)];
+                let effects = vec![unary(dst, UnaryOperator::IsControlled)];
+
+                return vec![TokenResult {
+                    requirements,
+                    effects,
+                }];
+            }
+            // TODO:
+            _ => vec![],
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct TokenResult {
+    pub requirements: Vec<Constraint>,
+    pub effects: Vec<Constraint>,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct Constraint {
-    
+pub enum Constraint {
+    Binary(BinaryConstraint),
+    Unary(UnaryConstraint),
+    Elementary(ElementaryConstraint),
+}
+
+impl Constraint {
+    /// Convert self into a list of constraints self depends on
+    ///
+    /// self.flatten => self
+    pub fn flatten(self) -> Vec<Constraint> {
+        match self {
+            Constraint::Elementary(_e) => vec![self],
+            Constraint::Unary(u) => u.flatten(),
+            Constraint::Binary(b) => b.flatten(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct BinaryConstraint {
+    pub target: Operand,
+    pub operator: BinaryOperator,
+    pub wanted_result: Operand,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum BinaryOperator {
+    IsEqual,
+    IsNotEqual,
+    IsGreater,
+    IsLess,
+}
+
+impl BinaryConstraint {
+    /// Convert self into a list of constraints self depends on
+    ///
+    /// self.flatten => self
+    pub fn flatten(self) -> Vec<Constraint> {
+        if self.target == self.wanted_result {
+            if self.operator == BinaryOperator::IsEqual {
+                return vec![elementary(true)];
+            }
+
+            return vec![elementary(false)];
+        }
+
+        match self.target {
+            Operand::Memory(_memory) => {
+                return vec![Constraint::Unary(UnaryConstraint {
+                    target: self.target,
+                    operator: UnaryOperator::IsControlled,
+                })];
+            }
+
+            Operand::Register(reg) => {
+                return vec![Constraint::Unary(UnaryConstraint {
+                    target: self.target,
+                    operator: UnaryOperator::IsControlled,
+                })];
+            }
+
+            Operand::Immediate(i) => match self.target {
+                Operand::Immediate(j) => match self.operator {
+                    BinaryOperator::IsEqual => vec![elementary(i.to_u64().eq(&j.to_u64()))],
+                    BinaryOperator::IsNotEqual => vec![elementary(i.to_u64().ne(&j.to_u64()))],
+                    BinaryOperator::IsGreater => vec![elementary(i.to_u64().gt(&j.to_u64()))],
+                    BinaryOperator::IsLess => vec![elementary(i.to_u64().lt(&j.to_u64()))],
+                },
+                _ => {
+                    // FIXME: another thing of definitions, we could reply with just "no" instead
+                    return vec![Constraint::Binary(Self {
+                        target: self.wanted_result,
+                        operator: self.operator,
+                        wanted_result: self.target,
+                    })];
+                }
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct UnaryConstraint {
+    pub target: Operand,
+    pub operator: UnaryOperator,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum UnaryOperator {
+    IsWritableAddr,
+    IsReadableAddr,
+    IsExecutableAddr,
+
+    IsControlled,
+}
+
+impl UnaryConstraint {
+    /// Convert self into a list of constraints self depends on
+    ///
+    /// self.flatten => self
+    pub fn flatten(self) -> Vec<Constraint> {
+        match self.target {
+            Operand::Memory(_memory) => {
+                match self.operator {
+                    UnaryOperator::IsControlled => {
+                        // FIXME: should be actually flattened, seen via context and some clever
+                        // unpacking to break it into its individual components
+                        vec![Constraint::Unary(self)]
+                    }
+
+                    // After it is dereferenced...
+                    UnaryOperator::IsWritableAddr
+                    | UnaryOperator::IsExecutableAddr
+                    | UnaryOperator::IsReadableAddr => {
+                        vec![Constraint::Unary(Self {
+                            target: self.target,
+                            operator: UnaryOperator::IsControlled,
+                        })]
+                    }
+                }
+            }
+
+            Operand::Register(reg) => {
+                match self.operator {
+                    UnaryOperator::IsControlled => {
+                        if reg == Register::BP || reg == Register::RBP {
+                            return vec![elementary(true)];
+                        }
+
+                        // FIXME: depends on how we want to handle this tbh, as true or false
+                        if reg == Register::None {
+                            return vec![elementary(true)];
+                        }
+
+                        vec![Constraint::Unary(self)]
+                    }
+
+                    UnaryOperator::IsWritableAddr
+                    | UnaryOperator::IsExecutableAddr
+                    | UnaryOperator::IsReadableAddr => {
+                        vec![Constraint::Unary(Self {
+                            target: self.target,
+                            operator: UnaryOperator::IsControlled,
+                        })]
+                    }
+                }
+            }
+
+            Operand::Immediate(_i) => {
+                match self.operator {
+                    // Dumb, will never be true
+                    UnaryOperator::IsControlled => {
+                        vec![elementary(false)]
+                    }
+
+                    // FIXME: pie, whatever, ... context reliant!
+                    UnaryOperator::IsWritableAddr
+                    | UnaryOperator::IsExecutableAddr
+                    | UnaryOperator::IsReadableAddr => {
+                        vec![elementary(false)]
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ElementaryConstraint(true) is always true, such as 1 = 1
+/// ElementaryConstraint(false) is always false, such as 1 = 0
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ElementaryConstraint(bool);
+
+pub fn elementary(b: bool) -> Constraint {
+    Constraint::Elementary(ElementaryConstraint(b))
+}
+
+pub fn unary(target: Operand, operator: UnaryOperator) -> Constraint {
+    Constraint::Unary(UnaryConstraint { target, operator })
+}
+
+pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Constraint {
+    Constraint::Binary(BinaryConstraint {
+        target,
+        operator,
+        wanted_result: wanted,
+    })
+}
+
+pub fn dedup_constraints(c: Vec<Constraint>) -> Vec<Constraint> {
+    let mut c = c;
+    let mut dedup = Vec::new();
+
+    let mut hs = HashSet::new();
+
+    let mut i = 0;
+    while i < c.len() {
+        let con = c[c.len() - 1 - i];
+
+        if !hs.insert(con) {
+            c.remove(i);
+            continue;
+        }
+
+        // impossible, whole chain is impossible
+        if con.eq(&elementary(false)) {
+            return vec![con];
+        }
+
+        dedup.append(&mut con.flatten());
+        i += 1;
+    }
+
+    return dedup;
+}
+
+pub fn total_dedup_constraints(c: Vec<Constraint>) -> Vec<Constraint> {
+    let mut c = c;
+    let mut p_hash = 0;
+    let mut hash = compute_hash(&c);
+
+    while p_hash != hash {
+        p_hash = hash;
+        c = dedup_constraints(c);
+        hash = compute_hash(&c);
+    }
+
+    return c;
+}
+
+pub fn dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
+    let mut c = c;
+    let mut dedup = Vec::new();
+
+    let mut hs = HashSet::new();
+
+    let mut i = 0;
+    while i < c.len() {
+        let con = c[c.len() - 1 - i].clone();
+
+        if !hs.insert(con.clone()) {
+            c.remove(i);
+            continue;
+        }
+
+        // TODO: this needs to properly merge results of instructions into results of the gadget..
+        dedup.push(con);
+        i += 1;
+    }
+
+    return dedup;
+}
+
+pub fn total_dedup_results(c: Vec<TokenResult>) -> Vec<TokenResult> {
+    let mut c = c;
+    let mut p_hash = 0;
+    let mut hash = compute_hash(&c);
+
+    while p_hash != hash {
+        p_hash = hash;
+        c = dedup_results(c);
+        hash = compute_hash(&c);
+    }
+
+    return c;
 }

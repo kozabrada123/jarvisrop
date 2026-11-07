@@ -1,16 +1,29 @@
 use clap::Parser;
-use iced_x86::OpKind;
+use iced_x86::{
+    OpKind,
+    Register::{RAX, RDI},
+};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashMap;
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::{HashMap, HashSet}, path::PathBuf, sync::Arc};
 
-use crate::instruction::{
-    ImmediateOp::{U8, U16, U32, U64}, Instruction,
+use crate::{
+    constraint::binary,
+    instruction::{
+        ImmediateOp::{U8, U16, U32, U64},
+        Instruction, Operand,
+    },
+    search::{Path, Searcher},
+    state::State,
 };
 
 pub mod constraint;
+pub mod gadget;
+pub mod hash_util;
 pub mod instruction;
+pub mod search;
+pub mod state;
 
 #[derive(Parser)]
 #[clap(version)]
@@ -53,25 +66,38 @@ fn main() {
                 })
                 .map(|gadget| {
                     (
-                        gadget
-                            .0
-                            .instructions()
-                            .iter()
-                            .map(|i| Instruction::from_iced(*i))
-                            .collect::<Vec<_>>(),
-                        gadget.0,
+                        crate::gadget::Gadget::from_inner(Arc::new(gadget.0)),
                         gadget.1,
                     )
                 })
-                .map(|gadget| (gadget.1, (gadget.0, gadget.2)))
+                .map(|gadget| (gadget.1, gadget.0))
                 .collect::<Vec<_>>()
         })
-        .collect::<FxHashMap<_, (_, _)>>();
+        .collect::<FxHashMap<_, _>>();
 
     let mut gadgets = gadget_to_addr.into_iter().collect::<Vec<_>>();
-    gadgets.sort_unstable_by(|(_, (_, addr1)), (_, (_, addr2))| addr1.cmp(addr2));
+    gadgets.sort_unstable_by(|(addr1, _), (addr2, _)| addr1.cmp(addr2));
 
     let gadget_count = gadgets.len();
 
     println!("Found {} gadgets..", gadget_count,);
+
+    let mut searcher = Searcher {
+        gadgets: gadgets.into_iter().map(|(id, gadget)| gadget).collect(),
+        wanted: binary(
+            Operand::Register(RDI),
+            constraint::BinaryOperator::IsEqual,
+            Operand::Register(RAX),
+        ),
+        initial_state: State::initial(),
+        found_solve: (0, Path::null()),
+
+        found_paths: vec![]
+    };
+
+    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
+    searcher.tick();
+    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
+    searcher.tick();
+    println!("{} - {}", searcher.found_paths.len(), searcher.found_paths.last().unwrap_or(&HashMap::new()).len());
 }

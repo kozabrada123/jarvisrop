@@ -1,0 +1,68 @@
+use std::sync::Arc;
+
+use crate::{
+    constraint::{
+        Token, dedup_constraints, dedup_results, total_dedup_constraints, total_dedup_results,
+    },
+    hash_util::compute_hash,
+    instruction::Instruction,
+};
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct Gadget {
+    pub inner: Arc<ropr::gadgets::Gadget>,
+    pub instructions: Vec<Instruction>,
+
+    pub results: Vec<crate::constraint::TokenResult>,
+    pub constraints: Vec<crate::constraint::Constraint>,
+}
+
+impl Token for Gadget {
+    fn find_results(&self) -> Vec<crate::constraint::TokenResult> {
+        self.results.clone()
+    }
+
+    fn find_needed_constraints(&self) -> Vec<crate::constraint::Constraint> {
+        self.constraints.clone()
+    }
+}
+
+impl Gadget {
+    pub fn from_inner(inner: Arc<ropr::gadgets::Gadget>) -> Self {
+        let instructions = inner
+            .instructions()
+            .iter()
+            .map(|i| Instruction::from_iced(*i))
+            .collect::<Vec<_>>();
+
+        let results = Self::calculate_results(&instructions);
+        let constraints = Self::calculate_needed_constraints(&instructions);
+
+        Self {
+            inner,
+            instructions,
+            results,
+            constraints,
+        }
+    }
+
+    fn calculate_needed_constraints(is: &Vec<Instruction>) -> Vec<crate::constraint::Constraint> {
+        let mut cs = Vec::new();
+
+        for ins in is {
+            cs.append(&mut total_dedup_constraints(ins.find_needed_constraints()));
+        }
+
+        return cs;
+    }
+
+    fn calculate_results(is: &Vec<Instruction>) -> Vec<crate::constraint::TokenResult> {
+        let mut resus = Vec::new();
+
+        for ins in is {
+            resus.append(&mut total_dedup_results(ins.find_results()));
+        }
+
+        return resus;
+    }
+}

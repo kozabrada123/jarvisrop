@@ -105,6 +105,17 @@ pub enum ImmediateOp {
     U64(u64),
 }
 
+impl ImmediateOp {
+    pub fn to_u64(self) -> u64 {
+       match self {
+            Self::U8(a) => a as u64,
+            Self::U16(a) => a as u64,
+            Self::U32(a) => a as u64,
+            Self::U64(a) => a as u64
+        } 
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum I32OrI64 {
     I32(i32),
