@@ -1,10 +1,9 @@
 use std::{
-    collections::HashSet,
     hash::{Hash, Hasher},
     sync::Arc,
 };
 
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelExtend, ParallelIterator};
 use rustc_hash::FxHashSet;
 
 use crate::{
@@ -72,6 +71,7 @@ impl Searcher {
                     let found_developments = self
                         .gadgets
                         .par_iter()
+                        .filter(|gadget| path.is_useful_addition(gadget))
                         .map(|gadget| {
                             let new_path = path.clone().with_applied_gadget(gadget.clone());
 
@@ -86,9 +86,7 @@ impl Searcher {
                         .filter(|new_path| !new_path.is_objectively_worse_than(path))
                         .collect::<FxHashSet<_>>();
 
-                    for found in found_developments {
-                        this_layer.insert(found);
-                    }
+                    this_layer.par_extend(found_developments);
                 });
 
             self.last_paths = this_layer;
