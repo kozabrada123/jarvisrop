@@ -12,6 +12,7 @@ use crate::{
     },
     gadget::Gadget,
     hash_util::compute_hash,
+    print_solve,
     state::State,
 };
 
@@ -22,7 +23,6 @@ pub struct Searcher {
     pub gadgets: Vec<Gadget>,
 
     pub found_paths: Vec<HashSet<Path>>,
-    pub found_solve: Path,
 }
 
 impl Searcher {
@@ -39,24 +39,26 @@ impl Searcher {
             );
 
             // first layer
-            let found_paths = self
+            let c = self
                 .gadgets
                 .par_iter()
                 .filter(|gadget| initial.is_useful_addition(gadget).clone())
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
-                .map(|g| initial.clone().with_applied_gadget(g))
+                .map(|g| {
+                    let path = initial.clone().with_applied_gadget(g);
+
+                    if let Some(true) =
+                        is_constraint_vec_elementary(&path.ending_state.wanted_constraints)
+                    {
+                        print_solve(path.clone());
+                    }
+
+                    path
+                })
                 .collect::<HashSet<_>>();
 
-            found_paths.iter().for_each(|p| {
-                if let Some(true) = is_constraint_vec_elementary(&p.ending_state.wanted_constraints)
-                {
-                    self.found_solve = p.clone();
-                    return;
-                }
-            });
-
-            self.found_paths.push(found_paths);
+            self.found_paths.push(c);
         } else {
             let last_u = last.unwrap();
 
@@ -70,22 +72,24 @@ impl Searcher {
                     let found_developments = self
                         .gadgets
                         .par_iter()
-                        .map(|gadget| path.clone().with_applied_gadget(gadget))
+                        .map(|gadget| {
+                            let new_path = path.clone().with_applied_gadget(gadget);
+
+                            if let Some(true) = is_constraint_vec_elementary(
+                                &new_path.ending_state.wanted_constraints,
+                            ) {
+                                print_solve(new_path.clone());
+                            }
+
+                            new_path
+                        })
                         .filter(|new_path| !new_path.is_objectively_worse_than(path))
                         .collect::<HashSet<_>>();
 
-                    found_developments.into_iter().for_each(|p| {
-                        if let Some(true) =
-                            is_constraint_vec_elementary(&p.ending_state.wanted_constraints)
-                        {
-                            self.found_solve = p.clone();
-                            return;
-                        }
-
-                        this_layer.insert(p);
-                    });
+                    for found in found_developments {
+                        this_layer.insert(found);
+                    }
                 });
-
             self.found_paths.push(this_layer);
         }
     }
@@ -96,7 +100,6 @@ pub struct Path {
     pub ending_state: State,
     /// Going backwards
     pub executed_gadgets: Vec<Gadget>,
-    pub previous_hash: u64,
 }
 
 impl Path {
@@ -104,12 +107,11 @@ impl Path {
         Self {
             ending_state: State::initial(),
             executed_gadgets: vec![],
-            previous_hash: 0,
         }
     }
 
     pub fn apply_gadget(&mut self, gadget: &Gadget) {
-        let mut results = gadget.find_results(&mut self.ending_state);
+        let results = gadget.find_results(&mut self.ending_state);
 
         let mut wanted_constraints = self.ending_state.wanted_constraints.clone();
         //println!("{:?} | wanted_constraints: {:?}", thread::current().id(), wanted_constraints);
@@ -118,7 +120,7 @@ impl Path {
 
         //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
 
-        for res in results.iter().rev() {
+        for res in results.iter() {
             let mut i = 0;
 
             let mut insert = false;
@@ -185,13 +187,6 @@ impl Path {
         s
     }
 
-    pub fn with_applied_gadget_and_previous(self, gadget: &Gadget, previous: u64) -> Self {
-        let mut s = self;
-        s.apply_gadget(gadget);
-        s.previous_hash = previous;
-        s
-    }
-
     /// Returns true if the given path is mathematically worse in every way
     pub fn is_objectively_worse_than(&self, other: &Self) -> bool {
         // Uncomperable
@@ -228,7 +223,7 @@ impl Path {
         for wanted in &self.ending_state.wanted_constraints {
             for effect in g.results.iter() {
                 if wanted.can_be_transposed_as(effect, &mut Vec::new(), true) {
-                     return true;
+                    return true;
                 }
             }
         }

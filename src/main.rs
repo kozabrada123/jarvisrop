@@ -1,7 +1,5 @@
 use clap::Parser;
-use iced_x86::{
-    OpKind, Register::*,
-};
+use iced_x86::{OpKind, Register::*};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashMap;
@@ -13,12 +11,17 @@ use std::{
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual, UnaryOperator::{self, IsControlled}, a_part_of_b, binary, unary,
-    }, instruction::{
+        BinaryOperator::IsEqual,
+        UnaryOperator::{self, IsControlled},
+        a_part_of_b, binary, unary,
+    },
+    instruction::{
         ImmediateOp::{U8, U16, U32, U64},
         Instruction,
         Operand::{self, Register},
-    }, search::{Path, Searcher}, state::State,
+    },
+    search::{Path, Searcher},
+    state::State,
 };
 
 pub mod constraint;
@@ -54,7 +57,7 @@ fn main() {
     let b = Binary::new(b).unwrap();
     let sections = b.sections(Option::None).unwrap();
 
-    let gadget_to_addr = sections
+    let gadgets = sections
         .iter()
         .filter_map(Disassembly::new)
         .flat_map(|dis| {
@@ -69,21 +72,18 @@ fn main() {
                     })
                 })
                 .map(|gadget| {
-                    (
-                        crate::gadget::Gadget::from_inner(
-                            Arc::new(gadget.0),
-                            &mut State::initial(),
-                        ),
-                        gadget.1,
-                    )
+                    (crate::gadget::Gadget::from_inner(
+                        Arc::new(gadget.0),
+                        &mut State::initial(),
+                    ),)
                 })
-                .map(|gadget| (gadget.1, gadget.0))
+                .map(|gadget| (gadget.0.results.len(), gadget.0))
                 .collect::<Vec<_>>()
         })
-        .collect::<FxHashMap<_, _>>();
+        .collect::<Vec<(_, _)>>();
 
-    let mut gadgets = gadget_to_addr.into_iter().collect::<Vec<_>>();
-    gadgets.sort_unstable_by(|(addr1, _), (addr2, _)| addr1.cmp(addr2));
+    let mut gadgets = gadgets.into_iter().collect::<Vec<_>>();
+    gadgets.sort_unstable_by(|(complexity1, _), (complexity2, _)| complexity1.cmp(complexity2));
 
     let gadget_count = gadgets.len();
 
@@ -92,19 +92,17 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
         wanted: vec![
-            unary(Register(RAX), IsControlled),
+            binary(Register(RAX), IsEqual, Register(RCX)),
             unary(Register(RSI), IsControlled),
             unary(Register(RDI), IsControlled),
         ],
         initial_state: State::initial(),
-        found_solve: Path::null(),
-
         found_paths: vec![],
     };
 
     let mut num_searches = 0;
 
-    while num_searches < 5 && searcher.found_solve == Path::null() {
+    while num_searches < 6 {
         println!(
             "Tick {}: {} - {}",
             num_searches,
@@ -115,9 +113,30 @@ fn main() {
         num_searches += 1;
     }
 
-    /*for path in searcher.found_paths.last().unwrap().iter().filter(|x| !x.is_impossible()) {
-        println!("{:?}", path);
-    }*/
+    println!("No solve found :(");
+}
 
-    println!("Found chain! {:?}", searcher.found_solve);
+pub fn print_solve(chain: Path) {
+
+    let mut solve_str = String::with_capacity(128);
+
+    solve_str.push_str("\nFound chain!\n");
+    solve_str.push_str("End state:\n");
+    solve_str.push_str("- constraints:\n");
+    for constraint in chain.ending_state.wanted_constraints {
+        solve_str.push_str(&format!("  - {:?}\n", constraint));
+    }
+    solve_str.push_str("\n- fullfilled effects:\n");
+    for effect in chain.ending_state.fullfilled_effects {
+        solve_str.push_str(&format!("  - {:?}\n", effect));
+    }
+    solve_str.push_str("\nGadgets:\n");
+    for gadget in chain.executed_gadgets.iter().rev() {
+        solve_str.push_str(&format!("- {:?}\n", gadget));
+    }
+    solve_str.push_str("\n");
+
+    print!("{}", solve_str);
+
+    std::process::exit(0);
 }
