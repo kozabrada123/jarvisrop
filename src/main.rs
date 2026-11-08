@@ -81,16 +81,16 @@ fn main() {
     println!("Found {} gadgets..", gadget_count,);
 
     let mut wanted = vec![
-        unary(Register(RCX), IsControlled),
+        binary(Register(RAX), IsEqual, Register(RCX)),
     ];
 
     wanted.reverse();
 
-    let l_pre_dedup = wanted.len();
+    let hash_predup = compute_hash(&wanted);
     total_dedup_constraints(&mut wanted, true);
-    let l_post_dedup = wanted.len();
+    let hash_postdup = compute_hash(&wanted);
 
-    if l_pre_dedup != l_post_dedup {
+    if hash_predup != hash_postdup {
         if let Some(b) = is_constraint_vec_elementary(&wanted) {
             if b {
                 println!("Your constraints are always fulfilled!");

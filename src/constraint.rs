@@ -317,14 +317,14 @@ impl BinaryConstraint {
                     target: self.target,
                     operator: UnaryOperator::IsControlled,
                 })];
-            }*/
+            }
 
             Operand::Register(reg) => {
                 return vec![Constraint::Unary(UnaryConstraint {
                     target: self.target,
                     operator: UnaryOperator::IsControlled,
                 })];
-            }
+            }*/
 
             Operand::Immediate(i) => return match self.target {
                 Operand::Immediate(j) => match self.operator {
@@ -653,7 +653,7 @@ pub fn dedup_results(r: &mut Vec<TokenResult>) {
             match (e1, e2) {
                 (Constraint::Binary(b1), Constraint::Binary(b2)) => {
                     let movs = b1.operator == BinaryOperator::IsEqual && b1.operator == b2.operator;
-                    let opposing = b1.target == b2.wanted_result && b1.wanted_result == b2.target;
+                    let opposing = (b1.target == b2.wanted_result && b1.wanted_result == b2.target) || (op_a_part_of_b(b2.wanted_result, b1.target) && op_a_part_of_b(b2.target, b1.wanted_result));
 
                     if movs && opposing {
                         // mov 2, 1
