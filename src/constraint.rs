@@ -53,8 +53,8 @@ impl Token for Instruction {
             }
             iced_x86::Mnemonic::Ret => {
                 // Don't bother with ret 0x4a95; and such
-                if self.operands[0].is_some() {
-                    vec![elementary(false)];
+                if !self.has_no_operands() {
+                    return vec![elementary(false)];
                 }
                 vec![elementary(true)]
             }
@@ -162,14 +162,14 @@ impl fmt::Debug for Constraint {
 }
 
 impl Constraint {
-    /// Convert self into a list of constraints self depends on
+    /// Simplifies self, if possible
     ///
     /// self.flatten => self
-    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
+    pub fn flatten(self) -> Vec<Constraint> {
         match self {
             Constraint::Elementary(_e) => vec![self],
-            Constraint::Unary(u) => u.flatten(state),
-            Constraint::Binary(b) => b.flatten(state),
+            Constraint::Unary(u) => u.flatten(),
+            Constraint::Binary(b) => b.flatten(),
         }
     }
 
@@ -298,10 +298,10 @@ impl fmt::Debug for BinaryConstraint {
 }
 
 impl BinaryConstraint {
-    /// Convert self into a list of constraints self depends on
+    /// Simplifies self, if possible
     ///
     /// self.flatten => self
-    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
+    pub fn flatten(self) -> Vec<Constraint> {
         if self.target == self.wanted_result {
             if self.operator == BinaryOperator::IsEqual {
                 return vec![elementary(true)];
@@ -311,12 +311,13 @@ impl BinaryConstraint {
         }
 
         match self.target {
-            Operand::Memory(_memory) => {
+            // ehhh
+            /*Operand::Memory(_memory) => {
                 return vec![Constraint::Unary(UnaryConstraint {
                     target: self.target,
                     operator: UnaryOperator::IsControlled,
                 })];
-            }
+            }*/
 
             Operand::Register(reg) => {
                 return vec![Constraint::Unary(UnaryConstraint {
@@ -325,7 +326,7 @@ impl BinaryConstraint {
                 })];
             }
 
-            Operand::Immediate(i) => match self.target {
+            Operand::Immediate(i) => return match self.target {
                 Operand::Immediate(j) => match self.operator {
                     BinaryOperator::IsEqual => vec![elementary(i.to_u64().eq(&j.to_u64()))],
                     BinaryOperator::IsNotEqual => vec![elementary(i.to_u64().ne(&j.to_u64()))],
@@ -341,7 +342,10 @@ impl BinaryConstraint {
                     })];
                 }
             },
+            _ => {}
         }
+
+        return vec![Constraint::Binary(self)];
     }
 
     /// Would self, if executed after o, overwrite it?
@@ -403,28 +407,17 @@ pub enum UnaryOperator {
 }
 
 impl UnaryConstraint {
-    // This should probably be a part of "can be rewritten as"
-    /// Convert self into a list of constraints self depends on
+    /// Simplifies self, if possible
     ///
     /// self.flatten => self
-    pub fn flatten(self, state: &mut State) -> Vec<Constraint> {
+    pub fn flatten(self) -> Vec<Constraint> {
         match self.target {
             Operand::Memory(_memory) => {
                 match self.operator {
-                    UnaryOperator::IsControlled | UnaryOperator::IsUnchanged => {
+                    _ => {
                         // FIXME: should be actually flattened, seen via context and some clever
                         // unpacking to break it into its individual components
                         vec![Constraint::Unary(self)]
-                    }
-
-                    // After it is dereferenced...
-                    UnaryOperator::IsWritableAddr
-                    | UnaryOperator::IsExecutableAddr
-                    | UnaryOperator::IsReadableAddr => {
-                        vec![Constraint::Unary(Self {
-                            target: self.target,
-                            operator: UnaryOperator::IsControlled,
-                        })]
                     }
                 }
             }
@@ -457,13 +450,8 @@ impl UnaryConstraint {
                         vec![Constraint::Unary(self)]
                     }
 
-                    UnaryOperator::IsWritableAddr
-                    | UnaryOperator::IsExecutableAddr
-                    | UnaryOperator::IsReadableAddr => {
-                        vec![Constraint::Unary(Self {
-                            target: self.target,
-                            operator: UnaryOperator::IsControlled,
-                        })]
+                    _ => {
+                        vec![Constraint::Unary(self)]
                     }
                 }
             }
@@ -572,6 +560,19 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
             continue;
         }
 
+        let flattened = con.flatten();
+
+        if vec![con] != flattened {
+            c.remove(i);
+
+            let mut j = i;
+            for f in flattened {
+               c.insert(j, f);
+               j += 1;
+            }
+            continue;
+        }
+
         if !hs.insert(con) {
             c.remove(i);
             continue;
@@ -596,8 +597,7 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
                     c.remove(j);
                     continue;
                 }
-            }
-            else {
+            } else {
                 // Later constraint is in conflict with us, it was never meant to be
                 if &con != later_con && later_con.overwrites(&con) {
                     c[i] = elementary(false);

@@ -15,6 +15,17 @@ impl fmt::Debug for Instruction {
 }
 
 impl Instruction {
+
+    pub fn has_no_operands(&self) -> bool {
+        for op in self.operands {
+            if op.is_some() { 
+                return false;
+            }
+        } 
+
+        true
+    }
+
     pub fn from_iced(ins: iced_x86::Instruction) -> Self {
         let mut operands = [None; 5];
 

@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use iced_x86::Mnemonic;
+
 use crate::{
     constraint::{
         Token, dedup_constraints, dedup_results, elementary, total_dedup_constraints,

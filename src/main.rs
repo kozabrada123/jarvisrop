@@ -81,20 +81,19 @@ fn main() {
     println!("Found {} gadgets..", gadget_count,);
 
     let mut wanted = vec![
-        unary(Register(RAX), IsControlled),
-        binary(Register(RAX), IsEqual, Register(RAX)), 
+        unary(Register(RCX), IsControlled),
     ];
 
     wanted.reverse();
 
     let l_pre_dedup = wanted.len();
-    total_dedup_constraints(&mut wanted, false);
+    total_dedup_constraints(&mut wanted, true);
     let l_post_dedup = wanted.len();
 
     if l_pre_dedup != l_post_dedup {
         if let Some(b) = is_constraint_vec_elementary(&wanted) {
             if b {
-                println!("Your constraints seem to be always fulfilled!");
+                println!("Your constraints are always fulfilled!");
             } else {
                 println!("Your constraints are impossible to fulfill!");
             }
