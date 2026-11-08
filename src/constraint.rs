@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt};
+use std::{collections::{HashSet, VecDeque}, fmt};
 
 use iced_x86::Register;
 
@@ -176,8 +176,7 @@ impl Constraint {
     pub fn can_be_transposed_as(
         self,
         other: &TokenResult,
-        new_requirements: &mut Vec<Constraint>,
-        heuristic: bool,
+        new_requirements: Option<&mut Vec<Constraint>>,
     ) -> bool {
         // Word for word the same
         if other.effects.contains(&self) {
@@ -197,8 +196,8 @@ impl Constraint {
                                     if o.wanted_result.is_register()
                                         && op_a_part_of_b(s.target, o.target)
                                     {
-                                        if !heuristic {
-                                            new_requirements.push(unary(
+                                        if let Some(vec) = new_requirements {
+                                            vec.push(unary(
                                                 o.wanted_result,
                                                 UnaryOperator::IsControlled,
                                             ));
@@ -234,8 +233,8 @@ impl Constraint {
                                     if o.wanted_result.is_register()
                                         && op_a_part_of_b(s.target, o.target)
                                     {
-                                        if !heuristic {
-                                            new_requirements.push(binary(
+                                        if let Some(vec) = new_requirements {
+                                            vec.push(binary(
                                                 o.wanted_result,
                                                 BinaryOperator::IsEqual,
                                                 s.wanted_result,
@@ -504,7 +503,7 @@ impl UnaryConstraint {
 /// ElementaryConstraint(true) is always true, such as 1 = 1
 /// ElementaryConstraint(false) is always false, such as 1 = 0
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ElementaryConstraint(bool);
+pub struct ElementaryConstraint(pub bool);
 
 impl fmt::Debug for ElementaryConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -666,9 +665,9 @@ pub fn is_constraint_vec_elementary(p: &Vec<Constraint>) -> Option<bool> {
     }
 
     if p.len() == 1
-        && let Some(Constraint::Elementary(ElementaryConstraint(b))) = p.last()
+        && let Constraint::Elementary(ElementaryConstraint(b)) = p[0]
     {
-        return Some(*b);
+        return Some(b);
     }
 
     None

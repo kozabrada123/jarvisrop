@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     hash::{Hash, Hasher},
     sync::Arc,
 };
@@ -9,6 +10,7 @@ use rustc_hash::FxHashSet;
 use crate::{
     constraint::{
         Constraint, Token, is_a_subset_of_b, is_constraint_vec_elementary, total_dedup_constraints,
+        total_dedup_results,
     },
     gadget::Gadget,
     print_solve,
@@ -18,7 +20,6 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct Searcher {
     pub initial_state: State,
-    pub wanted: Vec<Constraint>,
     pub gadgets: Vec<Arc<Gadget>>,
 
     pub layers: u16,
@@ -32,7 +33,7 @@ impl Searcher {
 
         if last.is_empty() {
             let mut initial = Path::null();
-            initial.ending_state = self.initial_state.clone().with_wanted(self.wanted.clone());
+            initial.ending_state = self.initial_state.clone();
 
             println!(
                 "Performing first layer with {} gadgets..",
@@ -133,7 +134,7 @@ impl Hash for Path {
 impl Path {
     pub fn null() -> Self {
         Self {
-            ending_state: State::initial(),
+            ending_state: State::fake(),
             executed_gadgets: vec![],
         }
     }
@@ -141,14 +142,12 @@ impl Path {
     pub fn apply_gadget(&mut self, gadget: Arc<Gadget>) {
         let results = gadget.find_results(&mut self.ending_state);
 
-        let mut needed_constraints = gadget.find_needed_constraints(&mut self.ending_state);
+        let needed_constraints = gadget.find_needed_constraints(&mut self.ending_state);
         self.ending_state
             .wanted_constraints
-            .append(&mut needed_constraints);
+            .append(&mut needed_constraints.into());
 
         for res in results.iter() {
-            let mut i = 0;
-
             let mut insert = false;
 
             let mut requirements = res.requirements.clone();
@@ -156,7 +155,7 @@ impl Path {
 
             // check if we are going to get it for free
             // (apply to the current state)
-            total_dedup_constraints(&mut requirements, true);
+            total_dedup_constraints(&mut requirements, false);
 
             let final_res = is_constraint_vec_elementary(&requirements);
 
@@ -166,13 +165,13 @@ impl Path {
 
             if final_res != Some(false) {
                 // check if we want it / it fullfills stuff we want
+                let mut i = 0;
                 while i < self.ending_state.wanted_constraints.len() {
                     let wanted_constraint = self.ending_state.wanted_constraints[i];
 
-                    if wanted_constraint.can_be_transposed_as(res, &mut requirements, false) {
-                        self.ending_state.wanted_constraints.remove(i);
+                    if wanted_constraint.can_be_transposed_as(res, None) {
                         insert = true;
-                        continue;
+                        break;
                     }
 
                     i += 1;
@@ -180,14 +179,12 @@ impl Path {
             }
 
             if insert {
-                self.ending_state
-                    .wanted_constraints
-                    .append(&mut requirements);
                 self.ending_state.fullfilled_effects.push(res.clone());
             }
         }
 
-        total_dedup_constraints(&mut self.ending_state.wanted_constraints, false);
+        total_dedup_results(&mut self.ending_state.fullfilled_effects);
+        self.ending_state.recalculate_wanted_constraints();
         self.executed_gadgets.push(gadget.clone());
     }
 
@@ -230,13 +227,20 @@ impl Path {
     }
 
     pub fn is_useful_addition(&self, g: &Gadget) -> bool {
-        for wanted in &self.ending_state.wanted_constraints {
+
+        for effect in g.results.iter() {
+            if self.ending_state.wanted_constraints[0].can_be_transposed_as(effect, None) {
+                return true;
+            }
+        }
+
+        /*for wanted in &self.ending_state.wanted_constraints {
             for effect in g.results.iter() {
-                if wanted.can_be_transposed_as(effect, &mut Vec::new(), true) {
+                if wanted.can_be_transposed_as(effect, None) {
                     return true;
                 }
             }
-        }
+        }*/
 
         false
     }

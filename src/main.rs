@@ -59,7 +59,7 @@ fn main() {
                 .map(|gadget| {
                     (crate::gadget::Gadget::from_inner(
                         Arc::new(gadget.0),
-                        &mut State::initial(),
+                        &mut State::fake(),
                     ),)
                 })
                 .map(|gadget| gadget.0)
@@ -77,16 +77,16 @@ fn main() {
 
     println!("Found {} gadgets..", gadget_count,);
 
+    let mut wanted = vec![
+            binary(Register(RCX), IsEqual, Register(RAX)),
+            unary(Register(RAX), IsControlled),
+        ];
+
+    wanted.reverse();
+
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().collect(),
-        wanted: vec![
-            unary(Register(RBX), IsControlled),
-            unary(Register(RSI), IsControlled),
-            unary(Register(RDI), IsControlled),
-            unary(Register(RCX), IsControlled),
-            binary(Register(RAX), IsEqual, Register(RCX)),
-        ],
-        initial_state: State::initial(),
+        initial_state: State::initial(Arc::new(wanted)),
         last_paths: FxHashSet::default(),
         layers: 0,
     };
