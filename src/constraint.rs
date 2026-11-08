@@ -533,7 +533,10 @@ pub fn binary(target: Operand, operator: BinaryOperator, wanted: Operand) -> Con
 }
 
 /// Assume that bigger indexes are constraints that are needed earlier
-pub fn dedup_constraints(c: &mut Vec<Constraint>) {
+///
+/// as_effects dictates if we treat these as wanted constraints or as effects;
+/// if set to true, later ones can overwrite earlier ones
+pub fn dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
     let mut hs = HashSet::new();
 
     let mut i = 0;
@@ -558,49 +561,36 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>) {
         }
 
         // Check for later (earlier) ones that get invalidated by this one
+        if as_effects {
+            let mut j = i + 1;
+            while j < c.len() {
+                let later_con = &c[j];
 
-        let mut j = i + 1;
-        while j < c.len() {
-            let later_con = &c[j];
-
-            if con.overwrites(later_con) {
-                c.remove(j);
-                continue;
+                if con.overwrites(later_con) {
+                    c.remove(j);
+                    continue;
+                }
+                j += 1;
             }
-            j += 1;
         }
 
         i += 1;
     }
 }
 
-pub fn total_dedup_constraints_for_state(state: &mut State) {
-    let mut c_len = state.wanted_constraints.len();
-    let mut p_len = 0;
-
-    while c_len != p_len {
-        p_len = state.wanted_constraints.len();
-        dedup_constraints(&mut state.wanted_constraints);
-        c_len = state.wanted_constraints.len();
-    }
-
-    // move from "just control -1 bro" to "yeah that's impossible dipshit"
-    dedup_constraints(&mut state.wanted_constraints);
-}
-
-pub fn total_dedup_constraints(c: &mut Vec<Constraint>) {
+pub fn total_dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
     let mut c = c;
     let mut c_len = c.len();
     let mut p_len = 0;
 
     while c_len != p_len {
         p_len = c.len();
-        dedup_constraints(&mut c);
+        dedup_constraints(&mut c, as_effects);
         c_len = c.len();
     }
 
     // move from "just control -1 bro" to "yeah that's impossible dipshit"
-    dedup_constraints(&mut c);
+    dedup_constraints(&mut c, as_effects);
 }
 
 /// Assumes that larger indexes are results that happened *earlier*

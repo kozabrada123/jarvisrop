@@ -9,7 +9,6 @@ use rustc_hash::FxHashSet;
 use crate::{
     constraint::{
         Constraint, Token, is_a_subset_of_b, is_constraint_vec_elementary, total_dedup_constraints,
-        total_dedup_constraints_for_state,
     },
     gadget::Gadget,
     print_solve,
@@ -157,7 +156,7 @@ impl Path {
 
             // check if we are going to get it for free
             // (apply to the current state)
-            total_dedup_constraints(&mut requirements);
+            total_dedup_constraints(&mut requirements, true);
 
             let final_res = is_constraint_vec_elementary(&requirements);
 
@@ -188,7 +187,7 @@ impl Path {
             }
         }
 
-        total_dedup_constraints_for_state(&mut self.ending_state);
+        total_dedup_constraints(&mut self.ending_state.wanted_constraints, false);
         self.executed_gadgets.push(gadget.clone());
     }
 

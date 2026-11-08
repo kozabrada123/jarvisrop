@@ -87,13 +87,13 @@ impl Gadget {
 
         for ins in is.iter().rev() {
             let mut needed = ins.find_needed_constraints(state);
-            total_dedup_constraints(&mut needed);
+            total_dedup_constraints(&mut needed, false);
             cs.append(&mut needed);
         }
 
         // Make later constraints earlier
         cs.reverse();
-        total_dedup_constraints(&mut cs);
+        total_dedup_constraints(&mut cs, false);
 
         return cs;
     }
