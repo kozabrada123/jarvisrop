@@ -49,6 +49,10 @@ impl Token for Instruction {
                 vec![elementary(true)]
             }
             iced_x86::Mnemonic::Ret => {
+                // Don't bother with ret 0x4a95; and such
+                if self.operands[0].is_some() {
+                    vec![elementary(false)];
+                }
                 vec![elementary(true)]
             }
             iced_x86::Mnemonic::Nop => {
@@ -88,10 +92,6 @@ impl Token for Instruction {
                 }];
             }
             iced_x86::Mnemonic::Ret => {
-                // Don't bother with ret 0x4a95; and such
-                if self.operands[0].is_some() {
-                    vec![elementary(false)];
-                }
                 vec![]
             }
             iced_x86::Mnemonic::Clc | iced_x86::Mnemonic::Cli | iced_x86::Mnemonic::Cld => {

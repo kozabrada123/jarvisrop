@@ -80,7 +80,10 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().collect(),
         wanted: vec![
-            binary(Register(RDX), IsEqual, Register(RBX)),
+            unary(Register(RBX), IsControlled),
+            unary(Register(RSI), IsControlled),
+            unary(Register(RDI), IsControlled),
+            unary(Register(RCX), IsControlled),
             binary(Register(RAX), IsEqual, Register(RCX)),
         ],
         initial_state: State::initial(),
