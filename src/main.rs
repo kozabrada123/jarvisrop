@@ -7,8 +7,17 @@ use std::{collections::HashSet, iter::chain, path::PathBuf, sync::Arc};
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual, UnaryOperator::{IsControlled, IsUnchanged}, binary, is_constraint_vec_elementary, total_dedup_constraints, unary,
-    }, hash_util::compute_hash, instruction::{ImmediateOp::U8, Operand::{Immediate, Register}}, search::{Path, Searcher}, state::State,
+        BinaryOperator::IsEqual,
+        UnaryOperator::{IsControlled, IsUnchanged},
+        binary, is_constraint_vec_elementary, total_dedup_constraints, unary,
+    },
+    hash_util::compute_hash,
+    instruction::{
+        ImmediateOp::U8,
+        Operand::{Immediate, Register},
+    },
+    search::{Path, Searcher},
+    state::State,
 };
 
 pub mod constraint;
@@ -129,7 +138,7 @@ pub fn print_solve(chain: Path) {
     solve_str.push_str("\nFound chain!\n");
     solve_str.push_str("End state:\n");
 
-    if !chain.ending_state.wanted_constraints.is_empty()  {
+    if !chain.ending_state.wanted_constraints.is_empty() {
         solve_str.push_str("- constraints:\n");
         for constraint in chain.ending_state.wanted_constraints {
             solve_str.push_str(&format!("  - {:?}\n", constraint));

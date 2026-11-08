@@ -327,23 +327,24 @@ impl BinaryConstraint {
                     operator: UnaryOperator::IsControlled,
                 })];
             }*/
-
-            Operand::Immediate(i) => return match self.target {
-                Operand::Immediate(j) => match self.operator {
-                    BinaryOperator::IsEqual => vec![elementary(i.to_u64().eq(&j.to_u64()))],
-                    BinaryOperator::IsNotEqual => vec![elementary(i.to_u64().ne(&j.to_u64()))],
-                    BinaryOperator::IsGreater => vec![elementary(i.to_u64().gt(&j.to_u64()))],
-                    BinaryOperator::IsLess => vec![elementary(i.to_u64().lt(&j.to_u64()))],
-                },
-                _ => {
-                    // FIXME: another thing of definitions, we could reply with just "no" instead
-                    return vec![Constraint::Binary(Self {
-                        target: self.wanted_result,
-                        operator: self.operator,
-                        wanted_result: self.target,
-                    })];
-                }
-            },
+            Operand::Immediate(i) => {
+                return match self.target {
+                    Operand::Immediate(j) => match self.operator {
+                        BinaryOperator::IsEqual => vec![elementary(i.to_u64().eq(&j.to_u64()))],
+                        BinaryOperator::IsNotEqual => vec![elementary(i.to_u64().ne(&j.to_u64()))],
+                        BinaryOperator::IsGreater => vec![elementary(i.to_u64().gt(&j.to_u64()))],
+                        BinaryOperator::IsLess => vec![elementary(i.to_u64().lt(&j.to_u64()))],
+                    },
+                    _ => {
+                        // FIXME: another thing of definitions, we could reply with just "no" instead
+                        return vec![Constraint::Binary(Self {
+                            target: self.wanted_result,
+                            operator: self.operator,
+                            wanted_result: self.target,
+                        })];
+                    }
+                };
+            }
             _ => {}
         }
 
@@ -571,8 +572,8 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
 
             let mut j = i;
             for f in flattened {
-               c.insert(j, f);
-               j += 1;
+                c.insert(j, f);
+                j += 1;
             }
             continue;
         }
@@ -657,7 +658,9 @@ pub fn dedup_results(r: &mut Vec<TokenResult>) {
             match (e1, e2) {
                 (Constraint::Binary(b1), Constraint::Binary(b2)) => {
                     let movs = b1.operator == BinaryOperator::IsEqual && b1.operator == b2.operator;
-                    let opposing = (b1.target == b2.wanted_result && b1.wanted_result == b2.target) || (op_a_part_of_b(b2.wanted_result, b1.target) && op_a_part_of_b(b2.target, b1.wanted_result));
+                    let opposing = (b1.target == b2.wanted_result && b1.wanted_result == b2.target)
+                        || (op_a_part_of_b(b2.wanted_result, b1.target)
+                            && op_a_part_of_b(b2.target, b1.wanted_result));
 
                     if movs && opposing {
                         // mov 2, 1

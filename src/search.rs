@@ -227,7 +227,6 @@ impl Path {
     }
 
     pub fn is_useful_addition(&self, g: &Gadget) -> bool {
-
         /*for effect in g.results.iter() {
             if self.ending_state.wanted_constraints[0].can_be_transposed_as(effect, None) {
                 return true;

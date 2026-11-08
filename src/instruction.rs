@@ -15,13 +15,12 @@ impl fmt::Debug for Instruction {
 }
 
 impl Instruction {
-
     pub fn has_no_operands(&self) -> bool {
         for op in self.operands {
-            if op.is_some() { 
+            if op.is_some() {
                 return false;
             }
-        } 
+        }
 
         true
     }
@@ -123,21 +122,21 @@ impl Operand {
     pub fn is_register(&self) -> bool {
         match self {
             Self::Register(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_immediate(&self) -> bool {
         match self {
             Self::Immediate(_) => true,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_memory(&self) -> bool {
         match self {
             Self::Memory(_) => true,
-            _ => false
+            _ => false,
         }
     }
 }
