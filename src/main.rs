@@ -6,7 +6,10 @@ use rustc_hash::FxHashSet;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use crate::{
-    constraint::{BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, unary}, hash_util::compute_hash, instruction::Operand::Register, search::{Path, Searcher}, state::State,
+    constraint::{
+        BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, is_constraint_vec_elementary,
+        total_dedup_constraints, unary,
+    }, hash_util::compute_hash, instruction::{ImmediateOp::U8, Operand::{Immediate, Register}}, search::{Path, Searcher}, state::State,
 };
 
 pub mod constraint;
@@ -78,11 +81,35 @@ fn main() {
     println!("Found {} gadgets..", gadget_count,);
 
     let mut wanted = vec![
-            binary(Register(RCX), IsEqual, Register(RAX)),
-            unary(Register(RAX), IsControlled),
-        ];
+        unary(Register(RAX), IsControlled),
+        binary(Register(RAX), IsEqual, Register(RAX)), 
+    ];
 
     wanted.reverse();
+
+    let l_pre_dedup = wanted.len();
+    total_dedup_constraints(&mut wanted, false);
+    let l_post_dedup = wanted.len();
+
+    if l_pre_dedup != l_post_dedup {
+        if let Some(b) = is_constraint_vec_elementary(&wanted) {
+            if b {
+                println!("Your constraints seem to be always fulfilled!");
+            } else {
+                println!("Your constraints are impossible to fulfill!");
+            }
+
+            std::process::exit(-1);
+        }
+
+        println!("Your constraints have been simplified:");
+        wanted.reverse();
+        for con in wanted.iter() {
+            println!("  - {:?}", con);
+        }
+        wanted.reverse();
+        println!("");
+    }
 
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().collect(),

@@ -1,4 +1,7 @@
-use std::{collections::{HashSet, VecDeque}, fmt};
+use std::{
+    collections::{HashSet, VecDeque},
+    fmt,
+};
 
 use iced_x86::Register;
 
@@ -395,10 +398,12 @@ pub enum UnaryOperator {
     IsReadableAddr,
     IsExecutableAddr,
 
+    IsUnchanged,
     IsControlled,
 }
 
 impl UnaryConstraint {
+    // This should probably be a part of "can be rewritten as"
     /// Convert self into a list of constraints self depends on
     ///
     /// self.flatten => self
@@ -406,7 +411,7 @@ impl UnaryConstraint {
         match self.target {
             Operand::Memory(_memory) => {
                 match self.operator {
-                    UnaryOperator::IsControlled => {
+                    UnaryOperator::IsControlled | UnaryOperator::IsUnchanged => {
                         // FIXME: should be actually flattened, seen via context and some clever
                         // unpacking to break it into its individual components
                         vec![Constraint::Unary(self)]
@@ -439,6 +444,19 @@ impl UnaryConstraint {
                         vec![Constraint::Unary(self)]
                     }
 
+                    UnaryOperator::IsUnchanged => {
+                        if reg == Register::BP || reg == Register::RBP {
+                            return vec![elementary(false)];
+                        }
+
+                        // FIXME: depends on how we want to handle this tbh, as true or false
+                        if reg == Register::None {
+                            return vec![elementary(true)];
+                        }
+
+                        vec![Constraint::Unary(self)]
+                    }
+
                     UnaryOperator::IsWritableAddr
                     | UnaryOperator::IsExecutableAddr
                     | UnaryOperator::IsReadableAddr => {
@@ -457,6 +475,11 @@ impl UnaryConstraint {
                         vec![elementary(false)]
                     }
 
+                    // Dumb, will always be true
+                    UnaryOperator::IsUnchanged => {
+                        vec![elementary(true)]
+                    }
+
                     // FIXME: pie, whatever, ... context reliant!
                     UnaryOperator::IsWritableAddr
                     | UnaryOperator::IsExecutableAddr
@@ -469,6 +492,8 @@ impl UnaryConstraint {
     }
 
     /// Would self, if executed after o, overwrite it?
+    ///
+    /// Or, would self o, if needed before self, invalidate self?
     pub fn overwrites(&self, o: &Constraint) -> bool {
         match o {
             Constraint::Binary(b) => {
@@ -559,18 +584,28 @@ pub fn dedup_constraints(c: &mut Vec<Constraint>, as_effects: bool) {
             return;
         }
 
-        // Check for later (earlier) ones that get invalidated by this one
-        if as_effects {
-            let mut j = i + 1;
-            while j < c.len() {
-                let later_con = &c[j];
+        // Check for later (earlier) effects that get overwritten by this one
+        // or
+        // Check for later (earlier) constraints that we conflict with
+        let mut j = i + 1;
+        while j < c.len() {
+            let later_con = &c[j];
 
+            if as_effects {
                 if con.overwrites(later_con) {
                     c.remove(j);
                     continue;
                 }
-                j += 1;
             }
+            else {
+                // Later constraint is in conflict with us, it was never meant to be
+                if &con != later_con && later_con.overwrites(&con) {
+                    c[i] = elementary(false);
+                    return;
+                }
+            }
+
+            j += 1;
         }
 
         i += 1;
