@@ -3,12 +3,11 @@ use iced_x86::{OpKind, Register::*};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashSet;
-use std::{collections::HashSet, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, iter::chain, path::PathBuf, sync::Arc};
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, is_constraint_vec_elementary,
-        total_dedup_constraints, unary,
+        BinaryOperator::IsEqual, UnaryOperator::{IsControlled, IsUnchanged}, binary, is_constraint_vec_elementary, total_dedup_constraints, unary,
     }, hash_util::compute_hash, instruction::{ImmediateOp::U8, Operand::{Immediate, Register}}, search::{Path, Searcher}, state::State,
 };
 
@@ -81,7 +80,8 @@ fn main() {
     println!("Found {} gadgets..", gadget_count,);
 
     let mut wanted = vec![
-        binary(Register(RAX), IsEqual, Register(RCX)),
+        unary(Register(RAX), IsControlled),
+        unary(Register(RCX), IsUnchanged),
     ];
 
     wanted.reverse();
@@ -128,11 +128,16 @@ pub fn print_solve(chain: Path) {
 
     solve_str.push_str("\nFound chain!\n");
     solve_str.push_str("End state:\n");
-    solve_str.push_str("- constraints:\n");
-    for constraint in chain.ending_state.wanted_constraints {
-        solve_str.push_str(&format!("  - {:?}\n", constraint));
+
+    if !chain.ending_state.wanted_constraints.is_empty()  {
+        solve_str.push_str("- constraints:\n");
+        for constraint in chain.ending_state.wanted_constraints {
+            solve_str.push_str(&format!("  - {:?}\n", constraint));
+        }
+        solve_str.push_str("\n");
     }
-    solve_str.push_str("\n- fullfilled effects:\n");
+
+    solve_str.push_str("- fullfilled effects:\n");
     for effect in chain.ending_state.fullfilled_effects.iter().rev() {
         solve_str.push_str(&format!("  - {:?}\n", effect));
     }

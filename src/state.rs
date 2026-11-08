@@ -5,7 +5,8 @@ use std::{
 };
 
 use crate::constraint::{
-    Constraint, ElementaryConstraint, TokenResult, elementary, total_dedup_constraints, unary,
+    Constraint, ElementaryConstraint, TokenResult, UnaryOperator::IsUnchanged, elementary,
+    total_dedup_constraints, unary,
 };
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -109,6 +110,39 @@ impl State {
 
                 i += 1;
             }
+        }
+
+        // Clean up any unchanged constraints that were left over
+        // TODO: more proper handling of these
+        let mut i = 0;
+        while i < self.wanted_constraints.len() {
+            let wanted_constraint = self.wanted_constraints[i];
+
+            match wanted_constraint {
+                Constraint::Unary(uc) => match uc.operator {
+                    IsUnchanged => {
+                        // Check for any conflicting ones "later" (earlier) on
+                        let mut j = i + 1;
+                        while j < self.wanted_constraints.len() {
+                            let con_2 = self.wanted_constraints[j];
+
+                            if con_2.overwrites(&wanted_constraint) {
+                                self.wanted_constraints = vec![elementary(false)];
+                                return;
+                            }
+
+                            j += 1;
+                        }
+
+                        self.wanted_constraints.remove(i);
+                        continue;
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+
+            i += 1;
         }
 
         total_dedup_constraints(&mut self.wanted_constraints, false);

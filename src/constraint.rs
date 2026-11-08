@@ -264,6 +264,8 @@ impl Constraint {
     }
 
     /// Would self, if executed after o, overwrite it?
+    ///
+    /// Or, would self o, if needed before self, invalidate self?
     pub fn overwrites(&self, o: &Constraint) -> bool {
         match self {
             Constraint::Elementary(_) => false,
@@ -349,6 +351,8 @@ impl BinaryConstraint {
     }
 
     /// Would self, if executed after o, overwrite it?
+    ///
+    /// Or, would self o, if needed before self, invalidate self?
     pub fn overwrites(&self, o: &Constraint) -> bool {
         match o {
             Constraint::Binary(b) => {
