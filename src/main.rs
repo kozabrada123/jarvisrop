@@ -3,16 +3,10 @@ use iced_x86::{OpKind, Register::*};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashSet;
-use std::{
-    collections::{HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use crate::{
-    constraint::{
-        BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, unary,
-    }, instruction::Operand::Register, search::{Path, Searcher}, state::State,
+    constraint::{BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, unary}, hash_util::compute_hash, instruction::Operand::Register, search::{Path, Searcher}, state::State,
 };
 
 pub mod constraint;
@@ -68,21 +62,25 @@ fn main() {
                         &mut State::initial(),
                     ),)
                 })
-                .map(|gadget| (gadget.0.results.len(), Arc::new(gadget.0)))
+                .map(|gadget| gadget.0)
+                .filter(|gadget| !gadget.is_impossible())
                 .collect::<FxHashSet<_>>()
         })
-        .collect::<FxHashSet<(_, _)>>();
+        .map(|gadget| Arc::new(gadget))
+        .collect::<FxHashSet<_>>();
 
     let mut gadgets = gadgets.into_iter().collect::<Vec<_>>();
-    gadgets.sort_unstable_by(|(complexity1, _), (complexity2, _)| complexity1.cmp(complexity2));
+    gadgets
+        .sort_unstable_by(|gadget_1, gadget_2| gadget_1.results.len().cmp(&gadget_2.results.len()));
 
     let gadget_count = gadgets.len();
 
     println!("Found {} gadgets..", gadget_count,);
 
     let mut searcher = Searcher {
-        gadgets: gadgets.into_iter().map(|(_id, gadget)| gadget).collect(),
+        gadgets: gadgets.into_iter().collect(),
         wanted: vec![
+            unary(Register(RDX), IsControlled),
             binary(Register(RAX), IsEqual, Register(RCX)),
         ],
         initial_state: State::initial(),
@@ -97,7 +95,6 @@ fn main() {
 }
 
 pub fn print_solve(chain: Path) {
-
     let mut solve_str = String::with_capacity(128);
 
     solve_str.push_str("\nFound chain!\n");

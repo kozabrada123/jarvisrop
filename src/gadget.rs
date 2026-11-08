@@ -6,8 +6,12 @@ use std::{
 
 use crate::{
     constraint::{
-        Token, dedup_constraints, dedup_results, elementary, total_dedup_constraints, total_dedup_results,
-    }, hash_util::compute_hash, instruction::Instruction, state::State,
+        Token, dedup_constraints, dedup_results, elementary, total_dedup_constraints,
+        total_dedup_results,
+    },
+    hash_util::compute_hash,
+    instruction::Instruction,
+    state::State,
 };
 
 #[derive(Clone, PartialEq, Eq)]

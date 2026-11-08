@@ -44,7 +44,6 @@ impl Searcher {
             let c = self
                 .gadgets
                 .par_iter()
-                .filter(|gadget| !gadget.is_impossible())
                 .filter(|gadget| initial.is_useful_addition(gadget))
                 // FIXME: should merge paths with the same contraints and effects but different
                 // gadgets
@@ -65,10 +64,6 @@ impl Searcher {
         } else {
             println!("DFS-ing over {} starts..", last.len());
 
-            for i in last {
-                println!("{:?}", i.executed_gadgets);
-            }
-
             // DFS!!!
             last.par_iter()
                 .filter(|p| !p.ending_state.is_impossible())
@@ -83,7 +78,6 @@ impl Searcher {
                         'gadgets: for gadget in self
                             .gadgets
                             .iter()
-                            .filter(|gadget| !gadget.is_impossible())
                             .filter(|gadget| current_path.is_useful_addition(gadget))
                         {
                             let new_path = current_path.clone().with_applied_gadget(gadget.clone());
@@ -102,22 +96,16 @@ impl Searcher {
                             // Go one layer deeper!
                             let new = new_path.ending_state.wanted_constraints.len();
                             let old = current_path.ending_state.wanted_constraints.len();
+                            let different = new == old
+                                && new_path.ending_state.wanted_constraints
+                                    != current_path.ending_state.wanted_constraints;
                             let obj_worse = current_path.is_objectively_worse_than(&new_path);
 
-                            if new < old
-                                || (new == old
-                                    && new_path.ending_state.wanted_constraints
-                                        != current_path.ending_state.wanted_constraints)
-                                || obj_worse
-                            {
+                            if new < old || different || obj_worse {
                                 parents.push(current_path);
                                 current_path = new_path;
                                 end_of_the_line = false;
                                 break 'gadgets;
-                            }
-
-                            else {
-                                //println!("EOTL: {:?} vs {:?} -- {:?}", new_path.ending_state.wanted_constraints, current_path.ending_state.wanted_constraints, new_path.executed_gadgets);
                             }
                         }
 
@@ -154,14 +142,10 @@ impl Path {
     pub fn apply_gadget(&mut self, gadget: Arc<Gadget>) {
         let results = gadget.find_results(&mut self.ending_state);
 
-        //println!("{:?} | wanted_constraints: {:?}", thread::current().id(), wanted_constraints);
-
         let mut needed_constraints = gadget.find_needed_constraints(&mut self.ending_state);
         self.ending_state
             .wanted_constraints
             .append(&mut needed_constraints);
-
-        //println!("{:?} | wanted_constraints + gadget needed: {:?}", thread::current().id(), wanted_constraints);
 
         for res in results.iter() {
             let mut i = 0;
@@ -196,32 +180,16 @@ impl Path {
                 }
             }
 
-            //println!("{:?} | wanted_constraints after res: {:?} ({:?})", thread::current().id(), wanted_constraints, res);
-
             if insert {
                 self.ending_state
                     .wanted_constraints
                     .append(&mut requirements);
                 self.ending_state.fullfilled_effects.push(res.clone());
             }
-
-            /*println!(
-                "{:?} | wanted_constraints after res + req: {:?}",
-                thread::current().id(),
-                wanted_constraints
-            );*/
         }
 
-        //println!("{:?} | wanted_constraints predup: {:?}", thread::current().id(), wanted_constraints);
         total_dedup_constraints_for_state(&mut self.ending_state);
-        //println!("{:?} | wanted_constraints postdup: {:?}", thread::current().id(), wanted_constraints);
-
         self.executed_gadgets.push(gadget.clone());
-
-        /*if is_constraint_vec_elementary(&self.ending_state.wanted_constraints) == Some(true) {
-            println!("{:?} - {:?}", thread::current().id(), self);
-            std::process::exit(0);
-        }*/
     }
 
     pub fn with_applied_gadget(self, gadget: Arc<Gadget>) -> Self {
