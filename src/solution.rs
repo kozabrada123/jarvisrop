@@ -41,26 +41,15 @@ impl Solution {
                 .cmp(&y.ending_state.fullfilled_effects.len())
                 .then(x.executed_gadgets.len().cmp(&y.executed_gadgets.len()))
         });
+
+        // the best ones will be at the bottom
+        self.chains.reverse();
     }
 
     pub fn print_chain(chain: &Path) {
         let mut solve_str = String::with_capacity(128);
 
-        solve_str.push_str("End state:\n");
-
-        if !chain.ending_state.wanted_constraints.is_empty() {
-            solve_str.push_str("- constraints:\n");
-            for constraint in &chain.ending_state.wanted_constraints {
-                solve_str.push_str(&format!("  - {:?}\n", constraint));
-            }
-            solve_str.push_str("\n");
-        }
-
-        solve_str.push_str("- fullfilled effects:\n");
-        for effect in chain.ending_state.fullfilled_effects.iter().rev() {
-            solve_str.push_str(&format!("  - {:?}\n", effect));
-        }
-        solve_str.push_str("\nGadgets:\n");
+        solve_str.push_str("Gadgets:\n");
         for gadget in chain.executed_gadgets.iter().rev() {
             solve_str.push_str(&format!("- {:?}\n", gadget));
         }
@@ -69,12 +58,14 @@ impl Solution {
         print!("{}", solve_str);
     }
 
-    pub fn print_and_exit(&self) {
-        println!("Found {} chains:\n", self.chains.len());
+    pub fn print_and_exit(&mut self) {
+        self.sort();
 
         for chain in &self.chains {
             Self::print_chain(&chain);
         }
+
+        println!("Found {} chains.", self.chains.len());
 
         std::process::exit(0);
     }

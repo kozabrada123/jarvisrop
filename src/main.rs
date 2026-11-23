@@ -94,7 +94,11 @@ fn main() {
 
     println!("Found {} gadgets..", gadget_count,);
 
-    let mut wanted = vec![unary(Register(RAX), IsControlled)];
+    let mut wanted = vec![
+        binary(Register(RAX), IsEqual, Register(RDX)),
+        unary(Register(RDI), IsControlled),
+        unary(Register(RSI), IsControlled),
+    ];
 
     wanted.reverse();
 
