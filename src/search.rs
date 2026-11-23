@@ -11,11 +11,7 @@ use crate::{
     constraint::{
         Constraint, Token, is_a_subset_of_b, is_constraint_vec_elementary, total_dedup_constraints,
         total_dedup_results,
-    },
-    gadget::Gadget,
-    print_solve,
-    solution::Solution,
-    state::State,
+    }, gadget::Gadget, hash_util::compute_hash, solution::Solution, state::State,
 };
 
 #[derive(Clone, Debug)]
@@ -120,7 +116,7 @@ impl Searcher {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Path {
     pub ending_state: State,
     /// Going backwards
@@ -129,9 +125,18 @@ pub struct Path {
 
 impl Hash for Path {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.ending_state.hash(state);
+        self.executed_gadgets.hash(state);
     }
 }
+
+// prevent duplicate hashes in various places, Hash and Eq need to agree
+impl PartialEq for Path {
+    fn eq(&self, other: &Self) -> bool {
+        compute_hash(self) == compute_hash(other)
+    }
+}
+
+impl Eq for Path {}
 
 impl Path {
     pub fn null() -> Self {

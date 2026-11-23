@@ -8,7 +8,7 @@ use iced_x86::Mnemonic;
 
 use crate::{
     constraint::{
-        Token, dedup_constraints, dedup_results, elementary, total_dedup_constraints,
+        Token, elementary, total_dedup_constraints,
         total_dedup_results,
     },
     hash_util::compute_hash,
@@ -16,9 +16,11 @@ use crate::{
     state::State,
 };
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct Gadget {
     pub inner: Arc<ropr::gadgets::Gadget>,
+    pub address: usize,
+
     pub instructions: Vec<Instruction>,
 
     /// from the first result seen to the last
@@ -34,6 +36,15 @@ impl Hash for Gadget {
         self.constraints.hash(state);
     }
 }
+
+// prevent duplicate hashes in various places, Hash and Eq need to agree
+impl PartialEq for Gadget {
+    fn eq(&self, other: &Self) -> bool {
+        compute_hash(self) == compute_hash(other)
+    }
+}
+
+impl Eq for Gadget {}
 
 impl fmt::Debug for Gadget {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -51,6 +62,19 @@ impl fmt::Debug for Gadget {
     }
 }
 
+impl fmt::Display for Gadget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut instructions = String::new();
+
+        for ins in &self.instructions {
+            instructions.push_str(&ins.inner.to_string());
+            instructions.push_str("; ");
+        }
+
+        f.write_fmt(format_args!("{} @{:x}", instructions, self.address))
+    }
+}
+
 impl Token for Gadget {
     // FIXME: is it really that different based on state?
     fn find_results(&self, _state: &mut State) -> Vec<crate::constraint::TokenResult> {
@@ -63,7 +87,11 @@ impl Token for Gadget {
 }
 
 impl Gadget {
-    pub fn from_inner(inner: Arc<ropr::gadgets::Gadget>, state: &mut State) -> Self {
+    pub fn from_inner(
+        inner: Arc<ropr::gadgets::Gadget>,
+        address: usize,
+        state: &mut State,
+    ) -> Self {
         let instructions = inner
             .instructions()
             .iter()
@@ -78,6 +106,7 @@ impl Gadget {
             instructions,
             results,
             constraints,
+            address,
         }
     }
 

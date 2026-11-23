@@ -5,23 +5,19 @@ use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashSet;
 use std::{
     collections::HashSet,
-    iter::chain,
     path::PathBuf,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use crate::{
     constraint::{
-        BinaryOperator::IsEqual,
-        UnaryOperator::{IsControlled, IsUnchanged},
-        binary, is_constraint_vec_elementary, total_dedup_constraints, unary,
+        BinaryOperator::IsEqual, UnaryOperator::IsControlled, binary, is_constraint_vec_elementary,
+        total_dedup_constraints, unary,
     },
     hash_util::compute_hash,
-    instruction::{
-        ImmediateOp::U8,
-        Operand::{Immediate, Register},
-    },
-    search::{Path, Searcher},
+    instruction::Operand::Register,
+    search::Searcher,
     state::State,
 };
 
@@ -76,6 +72,7 @@ fn main() {
                 .map(|gadget| {
                     (crate::gadget::Gadget::from_inner(
                         Arc::new(gadget.0),
+                        gadget.1,
                         &mut State::fake(),
                     ),)
                 })
@@ -129,10 +126,10 @@ fn main() {
     let mut searcher = Searcher {
         gadgets: gadgets.into_iter().collect(),
         initial_state: State::initial(Arc::new(wanted)),
-        last_paths: FxHashSet::default(),
+        last_paths: HashSet::default(),
         layers: 0,
         solution: Arc::new(Mutex::new(solution::Solution {
-            chains: Vec::new(),
+            chains: FxHashSet::default(),
             timer: std::option::Option::None,
         })),
     };
@@ -145,40 +142,12 @@ fn main() {
         .lock()
         .expect("Failed to get solve lock!")
         .timer
-        .is_none()
+        .is_some()
     {
+        loop {
+            std::thread::sleep(Duration::from_secs(1000));
+        }
+    } else {
         println!("No solve found :(");
     }
-    else {
-        loop {}
-    }
-}
-
-pub fn print_solve(chain: Path) {
-    let mut solve_str = String::with_capacity(128);
-
-    solve_str.push_str("\nFound chain!\n");
-    solve_str.push_str("End state:\n");
-
-    if !chain.ending_state.wanted_constraints.is_empty() {
-        solve_str.push_str("- constraints:\n");
-        for constraint in chain.ending_state.wanted_constraints {
-            solve_str.push_str(&format!("  - {:?}\n", constraint));
-        }
-        solve_str.push_str("\n");
-    }
-
-    solve_str.push_str("- fullfilled effects:\n");
-    for effect in chain.ending_state.fullfilled_effects.iter().rev() {
-        solve_str.push_str(&format!("  - {:?}\n", effect));
-    }
-    solve_str.push_str("\nGadgets:\n");
-    for gadget in chain.executed_gadgets.iter().rev() {
-        solve_str.push_str(&format!("- {:?}\n", gadget));
-    }
-    solve_str.push_str("\n");
-
-    print!("{}", solve_str);
-
-    std::process::exit(0);
 }
