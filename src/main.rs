@@ -3,7 +3,12 @@ use iced_x86::{OpKind, Register::*};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use ropr::{binary::Binary, disassembler::Disassembly};
 use rustc_hash::FxHashSet;
-use std::{collections::HashSet, iter::chain, path::PathBuf, sync::Arc};
+use std::{
+    collections::HashSet,
+    iter::chain,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     constraint::{
@@ -25,6 +30,7 @@ pub mod gadget;
 pub mod hash_util;
 pub mod instruction;
 pub mod search;
+pub mod solution;
 pub mod state;
 
 #[derive(Parser)]
@@ -88,10 +94,7 @@ fn main() {
 
     println!("Found {} gadgets..", gadget_count,);
 
-    let mut wanted = vec![
-        unary(Register(RAX), IsControlled),
-        unary(Register(RCX), IsUnchanged),
-    ];
+    let mut wanted = vec![unary(Register(RAX), IsControlled)];
 
     wanted.reverse();
 
@@ -124,12 +127,27 @@ fn main() {
         initial_state: State::initial(Arc::new(wanted)),
         last_paths: FxHashSet::default(),
         layers: 0,
+        solution: Arc::new(Mutex::new(solution::Solution {
+            chains: Vec::new(),
+            timer: std::option::Option::None,
+        })),
     };
 
     searcher.tick();
     searcher.tick();
 
-    println!("No solve found :(");
+    if searcher
+        .solution
+        .lock()
+        .expect("Failed to get solve lock!")
+        .timer
+        .is_none()
+    {
+        println!("No solve found :(");
+    }
+    else {
+        loop {}
+    }
 }
 
 pub fn print_solve(chain: Path) {

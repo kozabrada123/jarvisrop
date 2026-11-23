@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -14,6 +14,7 @@ use crate::{
     },
     gadget::Gadget,
     print_solve,
+    solution::Solution,
     state::State,
 };
 
@@ -24,6 +25,7 @@ pub struct Searcher {
 
     pub layers: u16,
     pub last_paths: FxHashSet<Path>,
+    pub solution: Arc<Mutex<Solution>>,
 }
 
 impl Searcher {
@@ -53,7 +55,7 @@ impl Searcher {
                     if let Some(true) =
                         is_constraint_vec_elementary(&path.ending_state.wanted_constraints)
                     {
-                        print_solve(path.clone());
+                        Solution::add(&self.solution, path.clone());
                     }
 
                     path
@@ -85,7 +87,7 @@ impl Searcher {
                             if let Some(true) = is_constraint_vec_elementary(
                                 &new_path.ending_state.wanted_constraints,
                             ) {
-                                print_solve(new_path.clone());
+                                Solution::add(&self.solution, new_path.clone());
                                 break 'out;
                             }
 
